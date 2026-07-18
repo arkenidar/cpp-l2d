@@ -75,3 +75,9 @@ with a post-build copy).
 - Circle tessellation uses LÖVE's segment formula (`max(8, sqrt(20 r))`);
   strokes are centered on the path like LÖVE's; canvases are composited
   with a premultiplied-alpha blend to avoid dark fringes on text edges.
+
+## License
+
+MIT (see [LICENSE](LICENSE)). The bundled `l2d/resources/Vera.ttf` is
+the Bitstream Vera Sans font, redistributed under its own
+[Bitstream Vera Fonts license](https://www.gnome.org/fonts/#Final_Bitstream_Vera_Fonts).
