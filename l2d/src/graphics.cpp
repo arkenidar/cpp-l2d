@@ -163,7 +163,9 @@ void Graphics::applyScissor() {
   if (cur_.scissorEnabled) {
     SDL_Rect r{(int)std::floor(cur_.scissorX), (int)std::floor(cur_.scissorY),
                (int)std::ceil(cur_.scissorW), (int)std::ceil(cur_.scissorH)};
+    // clang-format off
     if (r.w <= 0 || r.h <= 0) { r.w = 0; r.h = 0; } // fully clipped, not "no clip"
+    // clang-format on
     SDL_RenderSetClipRect(ren_, &r);
   } else {
     SDL_RenderSetClipRect(ren_, nullptr);

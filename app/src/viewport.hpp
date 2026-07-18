@@ -35,12 +35,15 @@ public:
   static constexpr float HANDLE_RADIUS = 8 * 3; // resize circle handle radius
   static constexpr float CLICK_MOVE_THRESHOLD = 6; // max px still counted as a click
 
+  // Single-line enums; ColumnLimit 0 would split them.
+  // clang-format off
   enum class DragMode { None, Move, Resize, Pan };
   // Press hit kinds returned by beginDrag ("move" / "resize" /
   // "pan-content" / "pan-opaque" / "pan-transparent" / nil in the Lua).
   enum class PressKind { None, Move, Resize, PanContent, PanOpaque, PanTransparent };
   // Body classification ("content" / "opaque" / "transparent" / nil).
   enum class BodyKind { Outside, Content, Opaque, Transparent };
+  // clang-format on
 
   // blocksInput: when true, the whole body consumes input even where no
   // content was hit; when false, empty areas let input fall through.

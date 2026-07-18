@@ -28,7 +28,10 @@ struct Color {
   float r = 1, g = 1, b = 1, a = 1;
 };
 
+// Single-line enum; ColumnLimit 0 would split it.
+// clang-format off
 enum class DrawMode { Fill, Line };
+// clang-format on
 
 // A drawable texture loaded from an image file. Move-only.
 class Image {

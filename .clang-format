@@ -1,0 +1,10 @@
+# Matches this repo's established style: LLVM base (2-space indent,
+# attached braces, right-aligned & and *), but with ColumnLimit 0 so the
+# formatter respects existing manual line breaks instead of rewrapping.
+BasedOnStyle: LLVM
+ColumnLimit: 0
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortBlocksOnASingleLine: Always
+AllowShortEnumsOnASingleLine: true
+AlignTrailingComments:
+  Kind: Leave
