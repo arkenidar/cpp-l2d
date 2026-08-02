@@ -1,9 +1,23 @@
 # l2d: reusable Love2D-like framework over SDL2 (+SDL2_image, +SDL2_ttf).
+#
+# Some SDL2/SDL2_image/SDL2_ttf installs (e.g. CxxDroid, Debian/Ubuntu)
+# provide neither a CMake config nor pkg-config, or their Find module
+# doesn't define an imported target, so fall back to locating the
+# headers/libraries directly.
 find_package(SDL2 REQUIRED)
 
-# Some SDL2_image/SDL2_ttf installs (e.g. CxxDroid, Debian/Ubuntu) provide
-# neither a CMake config nor pkg-config, so fall back to locating the
-# headers/libraries directly.
+if(NOT TARGET SDL2::SDL2)
+  find_path(SDL2_INCLUDE_DIR SDL.h PATH_SUFFIXES SDL2)
+  find_library(SDL2_LIBRARY NAMES SDL2)
+  if(NOT SDL2_INCLUDE_DIR OR NOT SDL2_LIBRARY)
+    message(FATAL_ERROR "SDL2 not found (looked for SDL.h and libSDL2)")
+  endif()
+  add_library(SDL2::SDL2 UNKNOWN IMPORTED)
+  set_target_properties(SDL2::SDL2 PROPERTIES
+    IMPORTED_LOCATION "${SDL2_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${SDL2_INCLUDE_DIR}")
+endif()
+
 find_package(SDL2_image CONFIG QUIET)
 find_package(SDL2_ttf CONFIG QUIET)
 
