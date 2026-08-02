@@ -1,13 +1,16 @@
 #include "demo.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
+#include <cstring>
 
 using l2d::Graphics;
 
 namespace {
 const char *const kTabLabels[] = {"Photo", "Nested", "Overlay"};
 constexpr float kMinTabBarHeight = 56; // comfortable touch-target height
+constexpr float kBaseFontSize = 13;    // matches l2d's baked atlas size
 } // namespace
 
 // Builds a Viewport + Scene pair and pushes it on top of a stack —
@@ -78,35 +81,59 @@ void DemoApp::layout(float ww, float wh) {
   float sw = ww;              // each tab's screen fills the full width
   float sh = wh - tbh;        // and the height below the tab bar
 
+  // Every top-level screen's origin/resize handles sit centered on its
+  // (0,0) and (w,h) corners (Viewport::draw, viewport.cpp), so content
+  // is laid out inside a margin-inset sub-rectangle that keeps clear of
+  // both handles — otherwise buttons placed near a corner render behind
+  // (and are hard to click without instead grabbing) the handle there.
+  // Scaled to screen size (with a floor at the handle's own clearance
+  // need) so it doesn't eat a disproportionate chunk of a narrow phone
+  // screen's width the way a flat pixel margin would.
+  float handleClearance = std::max(Viewport::HANDLE_SIZE, Viewport::HANDLE_RADIUS) * 0.7f;
+  float margin = std::max(std::min(sw, sh) * 0.08f, handleClearance);
+  float iw = std::max(sw - 2 * margin, 1.0f);
+  float ih = std::max(sh - 2 * margin, 1.0f);
+
   // Tab 0: full-screen photo-background demo. Opaque background, so it
   // blocks all input to anything below its frame. The two overlapping
   // rects demo scene-level z: the z = 1 rect draws on top and wins
   // clicks in the overlap. All child object coordinates are fractions
-  // of this screen's own w/h, so the layout holds together whether the
-  // window ends up wide (desktop) or narrow/tall (phone portrait).
+  // of this screen's own inset content area, so the layout holds
+  // together whether the window ends up wide (desktop) or narrow/tall
+  // (phone portrait), and nothing sits under a corner handle.
+  // Rect buttons are sized off a common unit — the geometric mean of
+  // iw/ih, not iw and ih independently — so they read as squarish
+  // buttons instead of stretching into thin bars on a wide screen.
+  // Geometric mean (rather than min) also keeps the unit from
+  // collapsing to the narrow axis on a tall phone-portrait screen,
+  // where plain min(iw, ih) would shrink everything to fit the width.
+  float pu = std::sqrt(iw * ih); // "photo" screen's sizing unit
   std::vector<std::unique_ptr<Drawable>> photoObjects;
-  photoObjects.push_back(
-      shapes::newRectButton({sw * 0.1f, sh * 0.15f, sw * 0.4f, sh * 0.3f}));
-  photoObjects.push_back(
-      shapes::newRectButton({sw * 0.35f, sh * 0.3f, sw * 0.4f, sh * 0.3f, 1}));
-  float photoCircleR = std::min(sw, sh) * 0.15f;
+  photoObjects.push_back(shapes::newRectButton(
+      {margin + iw * 0.1f, margin + ih * 0.15f, pu * 0.35f, pu * 0.3f}));
+  photoObjects.push_back(shapes::newRectButton(
+      {margin + iw * 0.1f + pu * 0.2f, margin + ih * 0.15f + pu * 0.2f, pu * 0.35f,
+       pu * 0.3f, 1}));
+  float photoCircleR = pu * 0.15f;
   photoObjects.push_back(shapes::newCircleButton(
-      {.cx = sw * 0.65f, .cy = sh * 0.55f,
+      {.cx = margin + iw * 0.65f, .cy = margin + ih * 0.55f,
        .sizes = {photoCircleR * 0.6f, photoCircleR, photoCircleR * 1.4f}}));
-  photoObjects.push_back(
-      shapes::newDecorGroup({sw * 0.2f, sh * 0.7f, std::min(sw, sh) * 0.002f}));
+  photoObjects.push_back(shapes::newDecorGroup(
+      {margin + iw * 0.15f, margin + ih * 0.75f, pu * 0.002f}));
   auto photoScreen = addViewport(tabs_[0], 0, tbh, sw, sh,
                                  std::move(photoObjects), true);
 
   // Nested child inside tab 0's screen — still demonstrates a viewport
   // nested inside another, scrolling/clipping with its parent while
   // handling its own drag/resize/input independently, just sized
-  // relative to the now much larger parent screen.
-  float cw = sw * 0.35f, ch = sh * 0.2f;
+  // relative to the now much larger parent screen. Centered, so its own
+  // handles stay clear of the parent's.
+  float cw = pu * 0.6f, ch = pu * 0.4f;
+  float cu = std::sqrt(cw * ch);
   std::vector<std::unique_ptr<Drawable>> childObjects;
   childObjects.push_back(
-      shapes::newRectButton({cw * 0.1f, ch * 0.15f, cw * 0.4f, ch * 0.35f}));
-  float cCircleR = std::min(cw, ch) * 0.35f;
+      shapes::newRectButton({cw * 0.1f, ch * 0.15f, cu * 0.4f, cu * 0.35f}));
+  float cCircleR = cu * 0.35f;
   childObjects.push_back(shapes::newCircleButton(
       {.cx = cw * 0.65f, .cy = ch * 0.55f,
        .sizes = {cCircleR * 0.6f, cCircleR, cCircleR * 1.4f}, .sizeIndex = 1}));
@@ -117,11 +144,11 @@ void DemoApp::layout(float ww, float wh) {
   // Tab 1: a standalone full-screen version of the nested-content demo
   // (small rect + circle button), so it's reachable on its own screen.
   std::vector<std::unique_ptr<Drawable>> nestedObjects;
-  nestedObjects.push_back(
-      shapes::newRectButton({sw * 0.1f, sh * 0.15f, sw * 0.4f, sh * 0.35f}));
-  float nestedCircleR = std::min(sw, sh) * 0.2f;
+  nestedObjects.push_back(shapes::newRectButton(
+      {margin + iw * 0.1f, margin + ih * 0.15f, pu * 0.4f, pu * 0.35f}));
+  float nestedCircleR = pu * 0.2f;
   nestedObjects.push_back(shapes::newCircleButton(
-      {.cx = sw * 0.65f, .cy = sh * 0.55f,
+      {.cx = margin + iw * 0.65f, .cy = margin + ih * 0.55f,
        .sizes = {nestedCircleR * 0.6f, nestedCircleR, nestedCircleR * 1.4f},
        .sizeIndex = 1}));
   addViewport(tabs_[1], 0, tbh, sw, sh, std::move(nestedObjects), false);
@@ -131,19 +158,23 @@ void DemoApp::layout(float ww, float wh) {
   // its own screen, but the behavior still demos the transparent-body
   // input policy).
   std::vector<std::unique_ptr<Drawable>> overlayObjects;
-  float overlayCircleR = std::min(sw, sh) * 0.2f;
+  float overlayCircleR = pu * 0.2f;
   overlayObjects.push_back(shapes::newCircleButton(
-      {.cx = sw * 0.3f, .cy = sh * 0.3f,
+      {.cx = margin + iw * 0.3f, .cy = margin + ih * 0.3f,
        .sizes = {overlayCircleR * 0.6f, overlayCircleR, overlayCircleR * 1.4f},
        .sizeIndex = 1}));
-  overlayObjects.push_back(
-      shapes::newRectButton({sw * 0.1f, sh * 0.5f, sw * 0.3f, sh * 0.2f}));
+  overlayObjects.push_back(shapes::newRectButton(
+      {margin + iw * 0.1f, margin + ih * 0.5f, pu * 0.3f, pu * 0.25f}));
   addViewport(tabs_[2], 0, tbh, sw, sh, std::move(overlayObjects), false);
 }
 
 void DemoApp::drawTabBar(Graphics &g, float ww, float wh) {
   float tbh = tabBarHeight(wh);
   float tabW = ww / kTabCount;
+  // Scale text well above the baked 13px atlas size for legibility on a
+  // phone screen; ~40% of the bar height reads clearly without
+  // crowding it.
+  float textScale = std::max(tbh * 0.4f / kBaseFontSize, 1.0f);
   for (int i = 0; i < kTabCount; ++i) {
     float x = i * tabW;
     bool active = i == activeTab_;
@@ -152,7 +183,12 @@ void DemoApp::drawTabBar(Graphics &g, float ww, float wh) {
     g.setColor(1, 1, 1);
     g.setLineWidth(1);
     g.rectangle(l2d::DrawMode::Line, x, 0, tabW, tbh);
-    g.print(kTabLabels[i], x + tabW * 0.5f - 20, tbh * 0.5f - 6);
+    // print()'s y is the text baseline, not its top, so vertical
+    // centering needs the baseline offset down from the box's vertical
+    // center by roughly the font's ascent (~0.7em for Vera Sans).
+    float textW = (float)std::strlen(kTabLabels[i]) * kBaseFontSize * 0.55f * textScale;
+    float baselineY = tbh * 0.5f + kBaseFontSize * textScale * 0.35f;
+    g.print(kTabLabels[i], x + (tabW - textW) * 0.5f, baselineY, textScale);
   }
 }
 
