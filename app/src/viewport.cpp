@@ -91,8 +91,8 @@ Viewport::PressKind Viewport::beginDrag(float px, float py) {
   return kind;
 }
 
-void Viewport::dragTo(float px, float py) {
-  if (dragMode == DragMode::None) return;
+std::pair<float, float> Viewport::dragTo(float px, float py) {
+  if (dragMode == DragMode::None) return {0, 0};
   float dx = px - lastX, dy = py - lastY;
   lastX = px;
   lastY = py;
@@ -111,10 +111,19 @@ void Viewport::dragTo(float px, float py) {
     h = std::max(minH, h + dy);
     clampScroll();
   } else if (dragMode == DragMode::Pan) {
-    scrollX -= dx;
-    scrollY -= dy;
-    clampScroll();
+    return panBy(dx, dy);
   }
+  return {0, 0};
+}
+
+std::pair<float, float> Viewport::panBy(float dx, float dy) {
+  float oldX = scrollX, oldY = scrollY;
+  scrollX -= dx;
+  scrollY -= dy;
+  clampScroll();
+  float appliedX = oldX - scrollX;
+  float appliedY = oldY - scrollY;
+  return {dx - appliedX, dy - appliedY};
 }
 
 bool Viewport::fireClickAt(float px, float py) {

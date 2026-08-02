@@ -228,7 +228,7 @@ void DemoApp::mousepressed(float x, float y, int button) {
 void DemoApp::mousemoved(float x, float y, float, float) {
   if (mouseCapture_) {
     auto [lx, ly] = toLocal(mouseCapture_->chain, x, y);
-    mouseCapture_->entry->viewport->dragTo(lx, ly);
+    chainDrag(*mouseCapture_, lx, ly);
   }
 }
 
@@ -238,7 +238,7 @@ void DemoApp::mousereleased(float x, float y, int button) {
   // Sync one last time at the release position before ending the
   // gesture: a fast flick can release before/without a matching motion
   // sample, which would leave the drag frozen short of the pointer.
-  mouseCapture_->entry->viewport->dragTo(lx, ly);
+  chainDrag(*mouseCapture_, lx, ly);
   releaseCapture(*mouseCapture_, lx, ly);
   mouseCapture_.reset();
 }
@@ -264,7 +264,7 @@ void DemoApp::touchmoved(std::int64_t id, float x, float y) {
   auto it = touchCaptures_.find(id);
   if (it != touchCaptures_.end()) {
     auto [lx, ly] = toLocal(it->second.chain, x, y);
-    it->second.entry->viewport->dragTo(lx, ly);
+    chainDrag(it->second, lx, ly);
   }
 }
 
@@ -273,7 +273,7 @@ void DemoApp::touchreleased(std::int64_t id, float x, float y) {
   if (it != touchCaptures_.end()) {
     auto [lx, ly] = toLocal(it->second.chain, x, y);
     // See mousereleased: sync at the release position first.
-    it->second.entry->viewport->dragTo(lx, ly);
+    chainDrag(it->second, lx, ly);
     releaseCapture(it->second, lx, ly);
     touchCaptures_.erase(it);
   }

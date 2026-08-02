@@ -37,6 +37,13 @@ std::pair<float, float> toLocal(const std::vector<Viewport *> &chain, float x, f
 // entirely: its handles are drawn on top of its children.
 std::optional<Capture> capturePressAt(EntryList &list, float x, float y);
 
+// Drives a captured gesture to local position (lx, ly) (already
+// converted via toLocal): drags the captured viewport, then, if it was
+// panning and couldn't absorb the full delta, offers the leftover to
+// each ancestor in capture.chain, innermost first, until absorbed or
+// the chain is exhausted. Move/Resize gestures never chain.
+void chainDrag(Capture &capture, float lx, float ly);
+
 // Ends a captured gesture at (x, y). A tentative gesture that stayed a
 // click is forwarded to the topmost sibling below that actually has
 // something there, raising it.

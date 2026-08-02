@@ -77,8 +77,20 @@ public:
   std::pair<float, float> childrenExtent() const;
 
   PressKind beginDrag(float px, float py);
-  void dragTo(float px, float py);
+
+  // Moves/resizes/pans this viewport toward (px, py). When panning,
+  // returns the portion of the requested delta that this viewport's
+  // scroll range couldn't absorb (0,0 if it had room, or if not
+  // panning), so the caller can offer it to the next viewport up an
+  // ancestor chain.
+  std::pair<float, float> dragTo(float px, float py);
   void endDrag() { dragMode = DragMode::None; }
+
+  // Scrolls by (dx, dy) directly (no beginDrag/lastX bookkeeping),
+  // for ancestors receiving leftover delta chained up from a captured
+  // descendant's pan. Returns the unabsorbed remainder, same as
+  // dragTo's Pan case.
+  std::pair<float, float> panBy(float dx, float dy);
 
   // Fires onClick at a position translated into content-space, if
   // inside the body. Returns whether a click was fired.

@@ -51,6 +51,17 @@ std::optional<Capture> capturePressAt(EntryList &list, float x, float y) {
   return std::nullopt;
 }
 
+void chainDrag(Capture &capture, float lx, float ly) {
+  Viewport *vp = capture.entry->viewport.get();
+  bool wasPan = vp->dragMode == Viewport::DragMode::Pan;
+  auto [leftX, leftY] = vp->dragTo(lx, ly);
+  if (!wasPan) return;
+  for (auto it = capture.chain.rbegin(); it != capture.chain.rend(); ++it) {
+    if (leftX == 0 && leftY == 0) break;
+    std::tie(leftX, leftY) = (*it)->panBy(leftX, leftY);
+  }
+}
+
 void releaseCapture(Capture &capture, float x, float y) {
   Viewport *vp = capture.entry->viewport.get();
   if (capture.tentative && !vp->dragMoved) {
