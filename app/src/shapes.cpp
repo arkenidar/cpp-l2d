@@ -90,16 +90,25 @@ private:
 
 class DecorGroup : public Drawable {
 public:
+  explicit DecorGroup(const DecorGroupOpts &o) : o_(o) {}
+
   void draw(Graphics &g) override {
+    float x = o_.x, y = o_.y, s = o_.scale;
     g.setColor(1, 1, 1);
-    g.print("Hello, L\xC3\x96VE!", 150, 200);
+    g.print("Hello, L\xC3\x96VE!", x, y);
     g.setColor(0, 1, 0);
-    g.line(500, 100, 600, 200);
+    g.line(x + 350 * s, y - 100 * s, x + 450 * s, y);
     g.setColor(1, 1, 0);
-    g.polygon(DrawMode::Fill, {700, 100, 750, 150, 700, 200, 650, 150});
+    g.polygon(DrawMode::Fill, {x + 550 * s, y - 100 * s, x + 600 * s, y - 50 * s,
+                               x + 550 * s, y, x + 500 * s, y - 50 * s});
   }
 
-  std::pair<float, float> bounds() override { return {750, 200}; }
+  std::pair<float, float> bounds() override {
+    return {o_.x + 600 * o_.scale, o_.y};
+  }
+
+private:
+  DecorGroupOpts o_;
 };
 
 } // namespace
@@ -116,8 +125,8 @@ std::unique_ptr<Drawable> newCoverRect(const CoverRectOpts &opts) {
   return std::make_unique<CoverRect>(opts);
 }
 
-std::unique_ptr<Drawable> newDecorGroup() {
-  return std::make_unique<DecorGroup>();
+std::unique_ptr<Drawable> newDecorGroup(const DecorGroupOpts &opts) {
+  return std::make_unique<DecorGroup>(opts);
 }
 
 } // namespace shapes

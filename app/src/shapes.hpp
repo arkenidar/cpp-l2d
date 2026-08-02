@@ -45,6 +45,12 @@ struct CoverRectOpts {
   l2d::Color color{0.15f, 0.15f, 0.2f, 0.6f};
 };
 
+// Text/line/polygon decor block, anchored at (x, y) and scaled by
+// `scale` so callers can fit it to their own viewport size.
+struct DecorGroupOpts {
+  float x = 0, y = 0, scale = 1;
+};
+
 // Single shape, clickable: toggles red/blue.
 std::unique_ptr<Drawable> newRectButton(const RectButtonOpts &opts);
 
@@ -55,6 +61,6 @@ std::unique_ptr<Drawable> newCircleButton(const CircleButtonOpts &opts);
 std::unique_ptr<Drawable> newCoverRect(const CoverRectOpts &opts);
 
 // Group of shapes as one object; non-interactive.
-std::unique_ptr<Drawable> newDecorGroup();
+std::unique_ptr<Drawable> newDecorGroup(const DecorGroupOpts &opts = {});
 
 } // namespace shapes

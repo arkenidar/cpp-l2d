@@ -44,6 +44,15 @@ Engine::Engine(const Config &config) : config_(config) {
   if (SDL_Init(SDL_INIT_VIDEO) != 0)
     throw std::runtime_error(std::string("l2d: SDL_Init failed: ") + SDL_GetError());
 
+  // Fill the real display resolution rather than opening at a fixed
+  // desktop-tuned size, so the window/viewport layout starts out
+  // matching the actual screen (phone or desktop) from frame one.
+  SDL_DisplayMode mode;
+  if (SDL_GetDesktopDisplayMode(0, &mode) == 0) {
+    config_.width = mode.w;
+    config_.height = mode.h;
+  }
+
   Uint32 flags = 0;
   if (config_.resizable) flags |= SDL_WINDOW_RESIZABLE;
   // No SDL_WINDOW_ALLOW_HIGHDPI: event coordinates and render
