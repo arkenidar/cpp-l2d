@@ -109,8 +109,16 @@ std::pair<float, float> Viewport::dragTo(float px, float py) {
     x += dx;
     y += dy;
   } else if (dragMode == DragMode::Resize) {
-    w = std::max(minW, w + dx);
-    h = std::max(minH, h + dy);
+    float newW = std::max(minW, w + dx);
+    float newH = std::max(minH, h + dy);
+    // Bank whatever part of the raw mouse delta the min-size clamp
+    // didn't apply, so lastX/lastY don't outrun w/h — otherwise
+    // reversing direction after hitting the minimum needs to first
+    // retrace the unapplied slack before the handle starts moving again.
+    lastX -= (w + dx) - newW;
+    lastY -= (h + dy) - newH;
+    w = newW;
+    h = newH;
     clampScroll();
   } else if (dragMode == DragMode::Pan) {
     return panBy(dx, dy);
