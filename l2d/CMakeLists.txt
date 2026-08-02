@@ -6,6 +6,22 @@
 # headers/libraries directly.
 find_package(SDL2 REQUIRED)
 
+if(TARGET SDL2::SDL2)
+  # CxxDroid's bundled FindSDL2.cmake stuffs the whole link line (several
+  # libraries plus linker flags) into IMPORTED_LOCATION, a property meant
+  # for exactly one file path, so the linker gets it all as one bogus
+  # filename. Split it back into a real primary library plus link flags.
+  get_target_property(_l2d_sdl2_loc SDL2::SDL2 IMPORTED_LOCATION)
+  if(_l2d_sdl2_loc MATCHES " ")
+    string(REPLACE ";" " " _l2d_sdl2_flat "${_l2d_sdl2_loc}")
+    separate_arguments(_l2d_sdl2_tokens UNIX_COMMAND "${_l2d_sdl2_flat}")
+    list(POP_FRONT _l2d_sdl2_tokens _l2d_sdl2_primary)
+    set_target_properties(SDL2::SDL2 PROPERTIES
+      IMPORTED_LOCATION "${_l2d_sdl2_primary}"
+      INTERFACE_LINK_LIBRARIES "${_l2d_sdl2_tokens}")
+  endif()
+endif()
+
 if(NOT TARGET SDL2::SDL2)
   find_path(SDL2_INCLUDE_DIR SDL.h PATH_SUFFIXES SDL2)
   find_library(SDL2_LIBRARY NAMES SDL2)
