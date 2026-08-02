@@ -110,8 +110,9 @@ void DemoApp::layout(float ww, float wh) {
   childObjects.push_back(shapes::newCircleButton(
       {.cx = cw * 0.65f, .cy = ch * 0.55f,
        .sizes = {cCircleR * 0.6f, cCircleR, cCircleR * 1.4f}, .sizeIndex = 1}));
-  addViewport(tabs_[0], cw * 0.1f, ch * 0.1f, cw, ch, std::move(childObjects),
-              false, {true, photoScreen->viewport.get()});
+  addViewport(tabs_[0], (sw - cw) / 2, (sh - ch) / 2, cw, ch,
+              std::move(childObjects), false,
+              {true, photoScreen->viewport.get()});
 
   // Tab 1: a standalone full-screen version of the nested-content demo
   // (small rect + circle button), so it's reachable on its own screen.
