@@ -18,9 +18,13 @@
 #include <utility>
 #include <vector>
 
+// TTF_Font's underlying struct tag differs across SDL_ttf versions
+// (e.g. "_TTF_Font" vs "TTF_Font"), so a forward declaration here would
+// conflict with the real one; include the header instead.
+#include <SDL_ttf.h>
+
 struct SDL_Renderer;
 struct SDL_Texture;
-struct TTF_Font;
 
 namespace l2d {
 

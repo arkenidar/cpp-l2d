@@ -36,6 +36,40 @@ int circleSegments(float radius) {
   return std::max(points, 8);
 }
 
+#if !SDL_VERSION_ATLEAST(2, 0, 18)
+// SDL_RenderGeometry fallback for SDL2 builds older than 2.0.18 (e.g.
+// CxxDroid's bundled headers): fills the convex polygon by scanline,
+// one solid horizontal SDL_RenderDrawLine per row. No AA, but matches
+// what SDL_RenderGeometry would rasterize closely enough for flat-shaded
+// UI shapes.
+void fillPolygonScanline(SDL_Renderer *ren, const std::vector<SDL_FPoint> &pts,
+                         SDL_Color c) {
+  size_t n = pts.size();
+  if (n < 3) return;
+  float ymin = pts[0].y, ymax = pts[0].y;
+  for (const auto &p : pts) {
+    ymin = std::min(ymin, p.y);
+    ymax = std::max(ymax, p.y);
+  }
+  SDL_SetRenderDrawColor(ren, c.r, c.g, c.b, c.a);
+  std::vector<float> xs;
+  for (int y = (int)std::floor(ymin); y < (int)std::ceil(ymax); y++) {
+    float yc = y + 0.5f;
+    xs.clear();
+    for (size_t i = 0; i < n; i++) {
+      const SDL_FPoint &a = pts[i], &b = pts[(i + 1) % n];
+      if ((a.y <= yc && b.y > yc) || (b.y <= yc && a.y > yc))
+        xs.push_back(a.x + (yc - a.y) / (b.y - a.y) * (b.x - a.x));
+    }
+    std::sort(xs.begin(), xs.end());
+    for (size_t i = 0; i + 1 < xs.size(); i += 2) {
+      int xa = (int)std::floor(xs[i]), xb = (int)std::ceil(xs[i + 1]) - 1;
+      if (xb >= xa) SDL_RenderDrawLine(ren, xa, y, xb, y);
+    }
+  }
+}
+#endif
+
 } // namespace
 
 // --- Image / Canvas RAII ---
@@ -176,6 +210,7 @@ void Graphics::fillQuad(float x1, float y1, float x2, float y2, float x3,
                         float y3, float x4, float y4) {
   SDL_Color c = toSDLColor(cur_.color);
   float tx = cur_.tx, ty = cur_.ty;
+#if SDL_VERSION_ATLEAST(2, 0, 18)
   SDL_Vertex v[4] = {
       {{x1 + tx, y1 + ty}, c, {0, 0}},
       {{x2 + tx, y2 + ty}, c, {0, 0}},
@@ -184,6 +219,14 @@ void Graphics::fillQuad(float x1, float y1, float x2, float y2, float x3,
   };
   int indices[6] = {0, 1, 2, 0, 2, 3};
   SDL_RenderGeometry(ren_, nullptr, v, 4, indices, 6);
+#else
+  fillPolygonScanline(ren_,
+                      {{x1 + tx, y1 + ty},
+                       {x2 + tx, y2 + ty},
+                       {x3 + tx, y3 + ty},
+                       {x4 + tx, y4 + ty}},
+                      c);
+#endif
 }
 
 void Graphics::fillTriangleFan(const std::vector<float> &xyPairs) {
@@ -191,6 +234,7 @@ void Graphics::fillTriangleFan(const std::vector<float> &xyPairs) {
   if (n < 3) return;
   SDL_Color c = toSDLColor(cur_.color);
   float tx = cur_.tx, ty = cur_.ty;
+#if SDL_VERSION_ATLEAST(2, 0, 18)
   std::vector<SDL_Vertex> verts(n);
   for (size_t i = 0; i < n; i++)
     verts[i] = {{xyPairs[i * 2] + tx, xyPairs[i * 2 + 1] + ty}, c, {0, 0}};
@@ -203,6 +247,15 @@ void Graphics::fillTriangleFan(const std::vector<float> &xyPairs) {
   }
   SDL_RenderGeometry(ren_, nullptr, verts.data(), (int)n, indices.data(),
                      (int)indices.size());
+#else
+  // Fan vertex 0 is the pivot every triangle shares, so the covered area
+  // equals the simple polygon traced by all n points in order — same
+  // convexity assumption as the SDL_RenderGeometry path above.
+  std::vector<SDL_FPoint> pts(n);
+  for (size_t i = 0; i < n; i++)
+    pts[i] = {xyPairs[i * 2] + tx, xyPairs[i * 2 + 1] + ty};
+  fillPolygonScanline(ren_, pts, c);
+#endif
 }
 
 void Graphics::rectangle(DrawMode mode, float x, float y, float w, float h) {
@@ -225,6 +278,7 @@ void Graphics::circle(DrawMode mode, float cx, float cy, float radius) {
   float tx = cur_.tx, ty = cur_.ty;
 
   if (mode == DrawMode::Fill) {
+#if SDL_VERSION_ATLEAST(2, 0, 18)
     std::vector<SDL_Vertex> verts(segments + 1);
     verts[0] = {{cx + tx, cy + ty}, c, {0, 0}};
     std::vector<int> indices;
@@ -238,11 +292,22 @@ void Graphics::circle(DrawMode mode, float cx, float cy, float radius) {
     }
     SDL_RenderGeometry(ren_, nullptr, verts.data(), (int)verts.size(),
                        indices.data(), (int)indices.size());
+#else
+    // Fan around the center covers the same area as the perimeter
+    // polygon itself (convex), so scanline-fill just the perimeter.
+    std::vector<SDL_FPoint> pts(segments);
+    for (int i = 0; i < segments; i++) {
+      float a = (float)i / segments * 2.0f * (float)M_PI;
+      pts[i] = {cx + radius * std::cos(a) + tx, cy + radius * std::sin(a) + ty};
+    }
+    fillPolygonScanline(ren_, pts, c);
+#endif
   } else {
     // Ring between radius - lw/2 and radius + lw/2 (stroke centered on
     // the path), as a triangle strip.
     float hlw = cur_.lineWidth / 2;
     float rIn = std::max(0.0f, radius - hlw), rOut = radius + hlw;
+#if SDL_VERSION_ATLEAST(2, 0, 18)
     std::vector<SDL_Vertex> verts((segments + 1) * 2);
     for (int i = 0; i <= segments; i++) {
       float a = (float)(i % segments) / segments * 2.0f * (float)M_PI;
@@ -263,6 +328,22 @@ void Graphics::circle(DrawMode mode, float cx, float cy, float radius) {
     }
     SDL_RenderGeometry(ren_, nullptr, verts.data(), (int)verts.size(),
                        indices.data(), (int)indices.size());
+#else
+    // Each ring segment is its own convex quad between the inner and
+    // outer arcs.
+    for (int i = 0; i < segments; i++) {
+      float a0 = (float)i / segments * 2.0f * (float)M_PI;
+      float a1 = (float)(i + 1) / segments * 2.0f * (float)M_PI;
+      float c0 = std::cos(a0), s0 = std::sin(a0);
+      float c1 = std::cos(a1), s1 = std::sin(a1);
+      fillPolygonScanline(ren_,
+                          {{cx + rOut * c0 + tx, cy + rOut * s0 + ty},
+                           {cx + rOut * c1 + tx, cy + rOut * s1 + ty},
+                           {cx + rIn * c1 + tx, cy + rIn * s1 + ty},
+                           {cx + rIn * c0 + tx, cy + rIn * s0 + ty}},
+                          c);
+    }
+#endif
   }
 }
 
@@ -327,7 +408,9 @@ Image Graphics::newImage(const std::string &path) {
                              "': " + IMG_GetError());
   SDL_QueryTexture(img.tex_, nullptr, nullptr, &img.w_, &img.h_);
   SDL_SetTextureBlendMode(img.tex_, SDL_BLENDMODE_BLEND);
+#if SDL_VERSION_ATLEAST(2, 0, 12)
   SDL_SetTextureScaleMode(img.tex_, SDL_ScaleModeLinear);
+#endif
   return img;
 }
 
@@ -341,7 +424,9 @@ Canvas Graphics::newCanvas(int w, int h) {
   cv.w_ = w;
   cv.h_ = h;
   SDL_SetTextureBlendMode(cv.tex_, premultipliedBlend());
+#if SDL_VERSION_ATLEAST(2, 0, 12)
   SDL_SetTextureScaleMode(cv.tex_, SDL_ScaleModeLinear);
+#endif
   return cv;
 }
 
@@ -399,10 +484,12 @@ std::pair<float, float> Graphics::getDimensions() const {
   // Window size, like love.graphics.getDimensions — independent of any
   // active canvas.
   int w = 0, h = 0;
+#if SDL_VERSION_ATLEAST(2, 0, 22)
   SDL_Window *win = SDL_RenderGetWindow(ren_);
   if (win)
     SDL_GetWindowSize(win, &w, &h);
   else
+#endif
     SDL_GetRendererOutputSize(ren_, &w, &h);
   return {(float)w, (float)h};
 }
