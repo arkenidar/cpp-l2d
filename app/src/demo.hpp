@@ -61,6 +61,10 @@ private:
   l2d::Engine *engine_ = nullptr;
   l2d::Image image_;
 
+  // Set each layout() from window size; multiplies new viewports'
+  // origin/resize handle sizes (doubled on phone-sized screens).
+  float handleScale_ = 1.0f;
+
   // One independent viewport stack per tab; only tabs_[activeTab_] is
   // drawn and receives input. Kept alive (not rebuilt) across tab
   // switches so per-tab state (button toggles, scroll position)

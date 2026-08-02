@@ -42,7 +42,7 @@ std::shared_ptr<Entry> DemoApp::addViewport(
   auto entry = std::make_shared<Entry>();
   entry->scene = std::make_unique<Scene>(engine_->graphics(), std::move(objects),
                                          std::move(backgroundFn));
-  entry->viewport = std::make_unique<Viewport>(x, y, w, h, blocksInput);
+  entry->viewport = std::make_unique<Viewport>(x, y, w, h, blocksInput, handleScale_);
 
   Scene *scene = entry->scene.get();
   entry->viewport->onClick = [scene](float cx, float cy) { scene->onClick(cx, cy); };
@@ -77,6 +77,11 @@ void DemoApp::layout(float ww, float wh) {
   touchCaptures_.clear();
   for (auto &tab : tabs_) tab.clear();
 
+  // Below this window size, treat the screen as phone-sized and double
+  // the origin/resize handles so they stay comfortable touch targets.
+  constexpr float kMobileBreakpoint = 600;
+  handleScale_ = std::min(ww, wh) < kMobileBreakpoint ? 2.0f : 1.0f;
+
   float tbh = tabBarHeight(wh);
   float sw = ww;              // each tab's screen fills the full width
   float sh = wh - tbh;        // and the height below the tab bar
@@ -89,7 +94,8 @@ void DemoApp::layout(float ww, float wh) {
   // Scaled to screen size (with a floor at the handle's own clearance
   // need) so it doesn't eat a disproportionate chunk of a narrow phone
   // screen's width the way a flat pixel margin would.
-  float handleClearance = std::max(Viewport::HANDLE_SIZE, Viewport::HANDLE_RADIUS) * 0.7f;
+  float handleClearance =
+      std::max(Viewport::HANDLE_SIZE, Viewport::HANDLE_RADIUS) * handleScale_ * 0.7f;
   float margin = std::max(std::min(sw, sh) * 0.08f, handleClearance);
   float iw = std::max(sw - 2 * margin, 1.0f);
   float ih = std::max(sh - 2 * margin, 1.0f);

@@ -5,8 +5,10 @@
 using l2d::DrawMode;
 using l2d::Graphics;
 
-Viewport::Viewport(float x_, float y_, float w_, float h_, bool blocksInput_)
-    : x(x_), y(y_), w(w_), h(h_), blocksInput(blocksInput_),
+Viewport::Viewport(float x_, float y_, float w_, float h_, bool blocksInput_,
+                   float handleScale)
+    : x(x_), y(y_), w(w_), h(h_), handleSize(HANDLE_SIZE * handleScale),
+      handleRadius(HANDLE_RADIUS * handleScale), blocksInput(blocksInput_),
       contentW(w_), contentH(h_) {}
 
 Viewport::BodyKind Viewport::bodyInputKind(float px, float py) const {
@@ -26,14 +28,14 @@ void Viewport::setContentSize(float cw, float ch) {
 }
 
 bool Viewport::hitOrigin(float mx, float my) const {
-  float half = HANDLE_SIZE / 2;
+  float half = handleSize / 2;
   return mx >= x - half && mx <= x + half && my >= y - half && my <= y + half;
 }
 
 bool Viewport::hitResize(float mx, float my) const {
   float cx = x + w, cy = y + h;
   float dx = mx - cx, dy = my - cy;
-  return dx * dx + dy * dy <= HANDLE_RADIUS * HANDLE_RADIUS;
+  return dx * dx + dy * dy <= handleRadius * handleRadius;
 }
 
 bool Viewport::hitBody(float mx, float my) const {
@@ -186,19 +188,19 @@ void Viewport::draw(Graphics &g, const std::function<void(float, float)> &conten
   g.rectangle(DrawMode::Line, x, y, w, h);
 
   // Origin square handle.
-  float half = HANDLE_SIZE / 2;
+  float half = handleSize / 2;
   g.setColor(0.9f, 0.6f, 0.1f);
-  g.rectangle(DrawMode::Fill, x - half, y - half, HANDLE_SIZE, HANDLE_SIZE);
+  g.rectangle(DrawMode::Fill, x - half, y - half, handleSize, handleSize);
   g.setColor(0, 0, 0);
   g.setLineWidth(2);
-  g.rectangle(DrawMode::Line, x - half, y - half, HANDLE_SIZE, HANDLE_SIZE);
+  g.rectangle(DrawMode::Line, x - half, y - half, handleSize, handleSize);
 
   // Resize circle handle.
   g.setColor(0.1f, 0.7f, 0.9f);
-  g.circle(DrawMode::Fill, x + w, y + h, HANDLE_RADIUS);
+  g.circle(DrawMode::Fill, x + w, y + h, handleRadius);
   g.setColor(0, 0, 0);
   g.setLineWidth(2);
-  g.circle(DrawMode::Line, x + w, y + h, HANDLE_RADIUS);
+  g.circle(DrawMode::Line, x + w, y + h, handleRadius);
 
   g.setColor(1, 1, 1);
 }

@@ -33,6 +33,8 @@ class Viewport {
 public:
   // Sized for comfortable touch targets, well above the ~44px mobile
   // minimum, as well as mouse use, since both share these constants.
+  // Doubled per-instance on phone-sized screens (see the constructor's
+  // handleScale) so touch targets stay comfortable on small screens.
   static constexpr float HANDLE_SIZE = 64;  // square origin handle side
   static constexpr float HANDLE_RADIUS = 40; // resize circle handle radius
   static constexpr float CLICK_MOVE_THRESHOLD = 10; // max px still counted as a click
@@ -49,7 +51,10 @@ public:
 
   // blocksInput: when true, the whole body consumes input even where no
   // content was hit; when false, empty areas let input fall through.
-  Viewport(float x, float y, float w, float h, bool blocksInput);
+  // handleScale multiplies HANDLE_SIZE/HANDLE_RADIUS for this instance
+  // (e.g. 2x on phone-sized screens for comfortable touch targets).
+  Viewport(float x, float y, float w, float h, bool blocksInput,
+           float handleScale = 1.0f);
 
   std::pair<float, float> getDimensions() const { return {w, h}; }
   std::pair<float, float> getContentSize() const { return {contentW, contentH}; }
@@ -121,6 +126,8 @@ public:
   float x, y, w, h;
   float scrollX = 0, scrollY = 0;
   float minW = 100, minH = 100; // stay comfortably above touch-target size
+  float handleSize = HANDLE_SIZE;
+  float handleRadius = HANDLE_RADIUS;
   bool blocksInput;
   float contentW, contentH;
   DragMode dragMode = DragMode::None;
