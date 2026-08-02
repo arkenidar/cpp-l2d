@@ -1,80 +1,26 @@
-# l2d: reusable Love2D-like framework over SDL2 (+SDL2_image, +SDL2_ttf).
+# l2d: reusable Love2D-like framework over SDL2 (CPU-only software
+# rendering, no GL/GPU required). Image decoding via stb_image and font
+# rasterization via stb_truetype replace SDL2_image and SDL2_ttf, so the
+# only external dependency is SDL2 itself.
 #
-# Some SDL2/SDL2_image/SDL2_ttf installs (e.g. CxxDroid, Debian/Ubuntu)
-# provide neither a CMake config nor pkg-config, or their Find module
-# doesn't define an imported target, so fall back to locating the
-# headers/libraries directly.
+# Uses the plain SDL2_INCLUDE_DIRS/SDL2_LIBRARIES variables rather than
+# the SDL2::SDL2 imported target: some SDL2 installs (e.g. CxxDroid's
+# bundled FindSDL2.cmake) define the variables correctly but produce a
+# broken imported target (e.g. stuffing the whole link line into
+# IMPORTED_LOCATION), so this is the form that works everywhere.
 find_package(SDL2 REQUIRED)
-
-if(TARGET SDL2::SDL2)
-  # CxxDroid's bundled FindSDL2.cmake stuffs the whole link line (several
-  # libraries plus linker flags) into an IMPORTED_LOCATION* property,
-  # meant for exactly one file path, so the linker gets it all as one
-  # bogus filename. Split it back into a real primary library plus link
-  # flags. The bogus value may live on the plain property or on a
-  # per-config variant, depending on how the module set it.
-  foreach(_l2d_sdl2_prop IN ITEMS
-      IMPORTED_LOCATION IMPORTED_LOCATION_NOCONFIG
-      IMPORTED_LOCATION_RELEASE IMPORTED_LOCATION_DEBUG
-      IMPORTED_LOCATION_MINSIZEREL IMPORTED_LOCATION_RELWITHDEBINFO)
-    get_target_property(_l2d_sdl2_loc SDL2::SDL2 ${_l2d_sdl2_prop})
-    if(_l2d_sdl2_loc MATCHES " ")
-      string(REPLACE ";" " " _l2d_sdl2_flat "${_l2d_sdl2_loc}")
-      separate_arguments(_l2d_sdl2_tokens UNIX_COMMAND "${_l2d_sdl2_flat}")
-      list(POP_FRONT _l2d_sdl2_tokens _l2d_sdl2_primary)
-      set_target_properties(SDL2::SDL2 PROPERTIES
-        ${_l2d_sdl2_prop} "${_l2d_sdl2_primary}"
-        INTERFACE_LINK_LIBRARIES "${_l2d_sdl2_tokens}")
-    endif()
-  endforeach()
-endif()
-
-if(NOT TARGET SDL2::SDL2)
-  find_path(SDL2_INCLUDE_DIR SDL.h PATH_SUFFIXES SDL2)
-  find_library(SDL2_LIBRARY NAMES SDL2)
-  if(NOT SDL2_INCLUDE_DIR OR NOT SDL2_LIBRARY)
-    message(FATAL_ERROR "SDL2 not found (looked for SDL.h and libSDL2)")
-  endif()
-  add_library(SDL2::SDL2 UNKNOWN IMPORTED)
-  set_target_properties(SDL2::SDL2 PROPERTIES
-    IMPORTED_LOCATION "${SDL2_LIBRARY}"
-    INTERFACE_INCLUDE_DIRECTORIES "${SDL2_INCLUDE_DIR}")
-endif()
-
-find_package(SDL2_image CONFIG QUIET)
-find_package(SDL2_ttf CONFIG QUIET)
-
-if(NOT TARGET SDL2_image::SDL2_image)
-  find_path(SDL2_IMAGE_INCLUDE_DIR SDL_image.h PATH_SUFFIXES SDL2)
-  find_library(SDL2_IMAGE_LIBRARY NAMES SDL2_image)
-  if(NOT SDL2_IMAGE_INCLUDE_DIR OR NOT SDL2_IMAGE_LIBRARY)
-    message(FATAL_ERROR "SDL2_image not found (looked for SDL_image.h and libSDL2_image)")
-  endif()
-  add_library(SDL2_image::SDL2_image UNKNOWN IMPORTED)
-  set_target_properties(SDL2_image::SDL2_image PROPERTIES
-    IMPORTED_LOCATION "${SDL2_IMAGE_LIBRARY}"
-    INTERFACE_INCLUDE_DIRECTORIES "${SDL2_IMAGE_INCLUDE_DIR}")
-endif()
-
-if(NOT TARGET SDL2_ttf::SDL2_ttf)
-  find_path(SDL2_TTF_INCLUDE_DIR SDL_ttf.h PATH_SUFFIXES SDL2)
-  find_library(SDL2_TTF_LIBRARY NAMES SDL2_ttf)
-  if(NOT SDL2_TTF_INCLUDE_DIR OR NOT SDL2_TTF_LIBRARY)
-    message(FATAL_ERROR "SDL2_ttf not found (looked for SDL_ttf.h and libSDL2_ttf)")
-  endif()
-  add_library(SDL2_ttf::SDL2_ttf UNKNOWN IMPORTED)
-  set_target_properties(SDL2_ttf::SDL2_ttf PROPERTIES
-    IMPORTED_LOCATION "${SDL2_TTF_LIBRARY}"
-    INTERFACE_INCLUDE_DIRECTORIES "${SDL2_TTF_INCLUDE_DIR}")
-endif()
 
 add_library(l2d STATIC
   src/graphics.cpp
   src/engine.cpp
+  src/stb_impl.cpp
 )
 
-target_include_directories(l2d PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(l2d PUBLIC SDL2::SDL2 SDL2_image::SDL2_image SDL2_ttf::SDL2_ttf)
+target_include_directories(l2d
+  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include ${SDL2_INCLUDE_DIRS}
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/stb
+)
+target_link_libraries(l2d PUBLIC ${SDL2_LIBRARIES})
 
 # The library's default font (Vera Sans 13px, same as LÖVE embeds) must
 # sit in resources/ next to any executable that links l2d.

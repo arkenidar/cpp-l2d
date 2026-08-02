@@ -1,8 +1,6 @@
 #include "l2d/engine.hpp"
 
 #include <SDL.h>
-#include <SDL_image.h>
-#include <SDL_ttf.h>
 
 #include <algorithm>
 #include <cctype>
@@ -45,10 +43,6 @@ Engine::Engine(const Config &config) : config_(config) {
 
   if (SDL_Init(SDL_INIT_VIDEO) != 0)
     throw std::runtime_error(std::string("l2d: SDL_Init failed: ") + SDL_GetError());
-  if ((IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG) & IMG_INIT_PNG) == 0)
-    throw std::runtime_error(std::string("l2d: IMG_Init failed: ") + IMG_GetError());
-  if (TTF_Init() != 0)
-    throw std::runtime_error(std::string("l2d: TTF_Init failed: ") + TTF_GetError());
 
   Uint32 flags = 0;
   if (config_.resizable) flags |= SDL_WINDOW_RESIZABLE;
@@ -68,21 +62,18 @@ Engine::Engine(const Config &config) : config_(config) {
     throw std::runtime_error(std::string("l2d: SDL_CreateRenderer failed: ") + SDL_GetError());
 
   std::string fontPath = findDefaultFont();
-  font_ = TTF_OpenFont(fontPath.c_str(), kDefaultFontSize);
-  if (!font_)
-    throw std::runtime_error("l2d: failed to load font '" + fontPath +
-                             "': " + TTF_GetError());
+  font_ = std::make_unique<Font>();
+  if (!font_->load(renderer_, fontPath, (float)kDefaultFontSize))
+    throw std::runtime_error("l2d: failed to load font '" + fontPath + "'");
 
-  gfx_ = std::make_unique<Graphics>(renderer_, font_);
+  gfx_ = std::make_unique<Graphics>(renderer_, font_.get());
 }
 
 Engine::~Engine() {
   gfx_.reset();
-  if (font_) TTF_CloseFont(font_);
+  font_.reset();
   if (renderer_) SDL_DestroyRenderer(renderer_);
   if (window_) SDL_DestroyWindow(window_);
-  TTF_Quit();
-  IMG_Quit();
   SDL_Quit();
 }
 

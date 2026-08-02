@@ -14,6 +14,7 @@ struct SDL_Window;
 namespace l2d {
 
 class Engine;
+class Font;
 
 // Love2D-style application callbacks. Coordinates are window pixels,
 // matching love.mousepressed / love.touchpressed conventions (touch
@@ -58,6 +59,7 @@ public:
   void quitEvent() { quitRequested_ = true; }
 
   Graphics &graphics() { return *gfx_; }
+  Font &font() { return *font_; }
   std::pair<float, float> mousePosition() const; // love.mouse.getPosition
   bool isShiftDown() const; // love.keyboard.isDown("lshift","rshift")
 
@@ -68,7 +70,7 @@ public:
 private:
   SDL_Window *window_ = nullptr;
   SDL_Renderer *renderer_ = nullptr;
-  TTF_Font *font_ = nullptr;
+  std::unique_ptr<Font> font_;
   std::unique_ptr<Graphics> gfx_;
   Config config_;
   bool quitRequested_ = false;

@@ -10,18 +10,16 @@
 //    1:1 onto canvas pixels)
 //  - shapes honoring setLineWidth, text via the default font (Vera 13px,
 //    the same font LÖVE embeds)
+//
+// CPU-only: uses SDL2's software renderer (no GL/GPU). Image decoding
+// is done via stb_image and font rasterization via stb_truetype, so
+// neither SDL2_image nor SDL2_ttf is required.
 #pragma once
 
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
-
-// TTF_Font's underlying struct tag differs across SDL_ttf versions
-// (e.g. "_TTF_Font" vs "TTF_Font"), so a forward declaration here would
-// conflict with the real one; include the header instead.
-#include <SDL_ttf.h>
 
 struct SDL_Renderer;
 struct SDL_Texture;
@@ -75,9 +73,32 @@ private:
   int w_ = 0, h_ = 0;
 };
 
+// A baked font atlas (stb_truetype under the hood). Move-only. The
+// implementation details are hidden via PIMPL so stb_truetype.h stays a
+// private dependency of the library.
+class Font {
+public:
+  Font();
+  ~Font();
+  Font(Font &&other) noexcept;
+  Font &operator=(Font &&other) noexcept;
+  Font(const Font &) = delete;
+  Font &operator=(const Font &) = delete;
+
+  bool valid() const { return data_ != nullptr; }
+
+  // Bakes a font atlas from a .ttf file at the given pixel height.
+  bool load(SDL_Renderer *ren, const std::string &path, float pixelHeight);
+
+private:
+  friend class Graphics;
+  struct Data;
+  std::unique_ptr<Data> data_;
+};
+
 class Graphics {
 public:
-  Graphics(SDL_Renderer *renderer, TTF_Font *defaultFont);
+  Graphics(SDL_Renderer *renderer, Font *defaultFont);
   ~Graphics();
   Graphics(const Graphics &) = delete;
   Graphics &operator=(const Graphics &) = delete;
@@ -133,14 +154,12 @@ private:
   void fillQuad(float x1, float y1, float x2, float y2, float x3, float y3,
                 float x4, float y4);
   void fillTriangleFan(const std::vector<float> &xyPairs);
-  SDL_Texture *textTexture(const std::string &text, int &outW, int &outH);
 
   SDL_Renderer *ren_;
-  TTF_Font *font_;
+  Font *font_;
   State cur_;
   std::vector<State> stack_;
   Canvas *activeCanvas_ = nullptr;
-  std::unordered_map<std::string, std::unique_ptr<Image>> textCache_;
 };
 
 } // namespace l2d

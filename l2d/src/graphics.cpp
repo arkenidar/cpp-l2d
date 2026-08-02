@@ -1,12 +1,16 @@
 #include "l2d/graphics.hpp"
 
 #include <SDL.h>
-#include <SDL_image.h>
-#include <SDL_ttf.h>
+
+#include <stb_image.h>
+#include <stb_truetype.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <fstream>
 #include <stdexcept>
+#include <vector>
 
 namespace l2d {
 
@@ -20,9 +24,6 @@ SDL_Color toSDLColor(const Color &c) {
   return SDL_Color{toByte(c.r), toByte(c.g), toByte(c.b), toByte(c.a)};
 }
 
-// Content rendered into a transparent canvas with BLENDMODE_BLEND ends up
-// premultiplied by alpha; compositing it onto the screen must therefore
-// use src*1 + dst*(1-srcA), or antialiased edges (text) darken.
 SDL_BlendMode premultipliedBlend() {
   return SDL_ComposeCustomBlendMode(
       SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
@@ -30,18 +31,12 @@ SDL_BlendMode premultipliedBlend() {
       SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD);
 }
 
-// LÖVE: Graphics::calculateEllipsePoints — sqrt(r * 20), min 8.
 int circleSegments(float radius) {
   int points = (int)std::sqrt(radius * 20.0f);
   return std::max(points, 8);
 }
 
 #if !SDL_VERSION_ATLEAST(2, 0, 18)
-// SDL_RenderGeometry fallback for SDL2 builds older than 2.0.18 (e.g.
-// CxxDroid's bundled headers): fills the convex polygon by scanline,
-// one solid horizontal SDL_RenderDrawLine per row. No AA, but matches
-// what SDL_RenderGeometry would rasterize closely enough for flat-shaded
-// UI shapes.
 void fillPolygonScanline(SDL_Renderer *ren, const std::vector<SDL_FPoint> &pts,
                          SDL_Color c) {
   size_t n = pts.size();
@@ -70,14 +65,79 @@ void fillPolygonScanline(SDL_Renderer *ren, const std::vector<SDL_FPoint> &pts,
 }
 #endif
 
+bool readFileBytes(const std::string &path, std::vector<unsigned char> &out) {
+  std::ifstream f(path, std::ios::binary | std::ios::ate);
+  if (!f) return false;
+  std::streamsize size = f.tellg();
+  if (size <= 0) return false;
+  f.seekg(0, std::ios::beg);
+  out.resize((size_t)size);
+  return f.read((char *)out.data(), size).good();
+}
+
 } // namespace
+
+// --- Font (stb_truetype baked atlas) ---
+
+struct Font::Data {
+  SDL_Texture *atlas = nullptr;
+  int atlasW = 0, atlasH = 0;
+  static constexpr int kFirstChar = 32;
+  static constexpr int kNumChars = 95;
+  stbtt_packedchar chars[kNumChars] = {};
+  float pixelHeight = 0;
+};
+
+Font::Font() : data_(std::make_unique<Data>()) {}
+Font::~Font() {
+  if (data_ && data_->atlas) SDL_DestroyTexture(data_->atlas);
+}
+Font::Font(Font &&other) noexcept : data_(std::move(other.data_)) {}
+Font &Font::operator=(Font &&other) noexcept {
+  if (this != &other) {
+    if (data_ && data_->atlas) SDL_DestroyTexture(data_->atlas);
+    data_ = std::move(other.data_);
+  }
+  return *this;
+}
+
+bool Font::load(SDL_Renderer *ren, const std::string &path, float pixelHeight) {
+  std::vector<unsigned char> ttf;
+  if (!readFileBytes(path, ttf)) return false;
+  constexpr int ATLAS_W = 512, ATLAS_H = 256;
+  std::vector<unsigned char> pixels(ATLAS_W * ATLAS_H, 0);
+  stbtt_pack_context spc;
+  if (!stbtt_PackBegin(&spc, pixels.data(), ATLAS_W, ATLAS_H, ATLAS_W, 1, nullptr))
+    return false;
+  stbtt_PackSetOversampling(&spc, 2, 2);
+  int ok = stbtt_PackFontRange(&spc, ttf.data(), 0, pixelHeight,
+                               Data::kFirstChar, Data::kNumChars, data_->chars);
+  stbtt_PackEnd(&spc);
+  if (!ok) return false;
+  std::vector<unsigned char> rgba(ATLAS_W * ATLAS_H * 4);
+  for (int i = 0; i < ATLAS_W * ATLAS_H; i++) {
+    rgba[i * 4 + 0] = 255;
+    rgba[i * 4 + 1] = 255;
+    rgba[i * 4 + 2] = 255;
+    rgba[i * 4 + 3] = pixels[i];
+  }
+  if (data_->atlas) SDL_DestroyTexture(data_->atlas);
+  data_->atlas = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ABGR8888,
+                                   SDL_TEXTUREACCESS_STATIC, ATLAS_W, ATLAS_H);
+  if (!data_->atlas) return false;
+  SDL_UpdateTexture(data_->atlas, nullptr, rgba.data(), ATLAS_W * 4);
+  SDL_SetTextureBlendMode(data_->atlas, SDL_BLENDMODE_BLEND);
+  data_->atlasW = ATLAS_W;
+  data_->atlasH = ATLAS_H;
+  data_->pixelHeight = pixelHeight;
+  return true;
+}
 
 // --- Image / Canvas RAII ---
 
 Image::Image(Image &&other) noexcept : tex_(other.tex_), w_(other.w_), h_(other.h_) {
   other.tex_ = nullptr;
 }
-
 Image &Image::operator=(Image &&other) noexcept {
   if (this != &other) {
     if (tex_) SDL_DestroyTexture(tex_);
@@ -88,7 +148,6 @@ Image &Image::operator=(Image &&other) noexcept {
   }
   return *this;
 }
-
 Image::~Image() {
   if (tex_) SDL_DestroyTexture(tex_);
 }
@@ -96,7 +155,6 @@ Image::~Image() {
 Canvas::Canvas(Canvas &&other) noexcept : tex_(other.tex_), w_(other.w_), h_(other.h_) {
   other.tex_ = nullptr;
 }
-
 Canvas &Canvas::operator=(Canvas &&other) noexcept {
   if (this != &other) {
     if (tex_) SDL_DestroyTexture(tex_);
@@ -107,47 +165,36 @@ Canvas &Canvas::operator=(Canvas &&other) noexcept {
   }
   return *this;
 }
-
 Canvas::~Canvas() {
   if (tex_) SDL_DestroyTexture(tex_);
 }
 
 // --- Graphics ---
 
-Graphics::Graphics(SDL_Renderer *renderer, TTF_Font *defaultFont)
+Graphics::Graphics(SDL_Renderer *renderer, Font *defaultFont)
     : ren_(renderer), font_(defaultFont) {
   SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
 }
-
 Graphics::~Graphics() = default;
 
-void Graphics::setColor(float r, float g, float b, float a) {
-  cur_.color = {r, g, b, a};
-}
-
+void Graphics::setColor(float r, float g, float b, float a) { cur_.color = {r, g, b, a}; }
 void Graphics::setColor(const Color &c) { cur_.color = c; }
-
 void Graphics::setLineWidth(float width) { cur_.lineWidth = width; }
-
 void Graphics::push() { stack_.push_back(cur_); }
-
 void Graphics::pop() {
   if (stack_.empty()) return;
   cur_ = stack_.back();
   stack_.pop_back();
   applyScissor();
 }
-
 void Graphics::origin() {
   cur_.tx = 0;
   cur_.ty = 0;
 }
-
 void Graphics::translate(float dx, float dy) {
   cur_.tx += dx;
   cur_.ty += dy;
 }
-
 std::pair<float, float> Graphics::transformPoint(float x, float y) const {
   return {x + cur_.tx, y + cur_.ty};
 }
@@ -180,7 +227,6 @@ void Graphics::setScissor(float x, float y, float w, float h) {
   cur_.scissorH = std::max(0.0f, h);
   applyScissor();
 }
-
 void Graphics::setScissor() {
   cur_.scissorEnabled = false;
   applyScissor();
@@ -192,14 +238,13 @@ void Graphics::applyColor() {
 }
 
 void Graphics::applyScissor() {
-  // SDL clip rects are per render target, so this runs after every
-  // scissor change, pop, and target switch.
   if (cur_.scissorEnabled) {
     SDL_Rect r{(int)std::floor(cur_.scissorX), (int)std::floor(cur_.scissorY),
                (int)std::ceil(cur_.scissorW), (int)std::ceil(cur_.scissorH)};
-    // clang-format off
-    if (r.w <= 0 || r.h <= 0) { r.w = 0; r.h = 0; } // fully clipped, not "no clip"
-    // clang-format on
+    if (r.w <= 0 || r.h <= 0) {
+      r.w = 0;
+      r.h = 0;
+    }
     SDL_RenderSetClipRect(ren_, &r);
   } else {
     SDL_RenderSetClipRect(ren_, nullptr);
@@ -220,12 +265,7 @@ void Graphics::fillQuad(float x1, float y1, float x2, float y2, float x3,
   int indices[6] = {0, 1, 2, 0, 2, 3};
   SDL_RenderGeometry(ren_, nullptr, v, 4, indices, 6);
 #else
-  fillPolygonScanline(ren_,
-                      {{x1 + tx, y1 + ty},
-                       {x2 + tx, y2 + ty},
-                       {x3 + tx, y3 + ty},
-                       {x4 + tx, y4 + ty}},
-                      c);
+  fillPolygonScanline(ren_, {{x1 + tx, y1 + ty}, {x2 + tx, y2 + ty}, {x3 + tx, y3 + ty}, {x4 + tx, y4 + ty}}, c);
 #endif
 }
 
@@ -248,9 +288,6 @@ void Graphics::fillTriangleFan(const std::vector<float> &xyPairs) {
   SDL_RenderGeometry(ren_, nullptr, verts.data(), (int)n, indices.data(),
                      (int)indices.size());
 #else
-  // Fan vertex 0 is the pivot every triangle shares, so the covered area
-  // equals the simple polygon traced by all n points in order — same
-  // convexity assumption as the SDL_RenderGeometry path above.
   std::vector<SDL_FPoint> pts(n);
   for (size_t i = 0; i < n; i++)
     pts[i] = {xyPairs[i * 2] + tx, xyPairs[i * 2 + 1] + ty};
@@ -262,13 +299,11 @@ void Graphics::rectangle(DrawMode mode, float x, float y, float w, float h) {
   if (mode == DrawMode::Fill) {
     fillQuad(x, y, x + w, y, x + w, y + h, x, y + h);
   } else {
-    // Stroke centered on the path, like LÖVE: four edge bands whose
-    // corner squares are each covered exactly once.
     float lw = cur_.lineWidth, hlw = lw / 2;
-    fillQuad(x - hlw, y - hlw, x + w + hlw, y - hlw, x + w + hlw, y + hlw, x - hlw, y + hlw); // top
-    fillQuad(x - hlw, y + h - hlw, x + w + hlw, y + h - hlw, x + w + hlw, y + h + hlw, x - hlw, y + h + hlw); // bottom
-    fillQuad(x - hlw, y + hlw, x + hlw, y + hlw, x + hlw, y + h - hlw, x - hlw, y + h - hlw); // left
-    fillQuad(x + w - hlw, y + hlw, x + w + hlw, y + hlw, x + w + hlw, y + h - hlw, x + w - hlw, y + h - hlw); // right
+    fillQuad(x - hlw, y - hlw, x + w + hlw, y - hlw, x + w + hlw, y + hlw, x - hlw, y + hlw);
+    fillQuad(x - hlw, y + h - hlw, x + w + hlw, y + h - hlw, x + w + hlw, y + h + hlw, x - hlw, y + h + hlw);
+    fillQuad(x - hlw, y + hlw, x + hlw, y + hlw, x + hlw, y + h - hlw, x - hlw, y + h - hlw);
+    fillQuad(x + w - hlw, y + hlw, x + w + hlw, y + hlw, x + w + hlw, y + h - hlw, x + w - hlw, y + h - hlw);
   }
 }
 
@@ -276,7 +311,6 @@ void Graphics::circle(DrawMode mode, float cx, float cy, float radius) {
   int segments = circleSegments(radius);
   SDL_Color c = toSDLColor(cur_.color);
   float tx = cur_.tx, ty = cur_.ty;
-
   if (mode == DrawMode::Fill) {
 #if SDL_VERSION_ATLEAST(2, 0, 18)
     std::vector<SDL_Vertex> verts(segments + 1);
@@ -293,8 +327,6 @@ void Graphics::circle(DrawMode mode, float cx, float cy, float radius) {
     SDL_RenderGeometry(ren_, nullptr, verts.data(), (int)verts.size(),
                        indices.data(), (int)indices.size());
 #else
-    // Fan around the center covers the same area as the perimeter
-    // polygon itself (convex), so scanline-fill just the perimeter.
     std::vector<SDL_FPoint> pts(segments);
     for (int i = 0; i < segments; i++) {
       float a = (float)i / segments * 2.0f * (float)M_PI;
@@ -303,8 +335,6 @@ void Graphics::circle(DrawMode mode, float cx, float cy, float radius) {
     fillPolygonScanline(ren_, pts, c);
 #endif
   } else {
-    // Ring between radius - lw/2 and radius + lw/2 (stroke centered on
-    // the path), as a triangle strip.
     float hlw = cur_.lineWidth / 2;
     float rIn = std::max(0.0f, radius - hlw), rOut = radius + hlw;
 #if SDL_VERSION_ATLEAST(2, 0, 18)
@@ -329,19 +359,12 @@ void Graphics::circle(DrawMode mode, float cx, float cy, float radius) {
     SDL_RenderGeometry(ren_, nullptr, verts.data(), (int)verts.size(),
                        indices.data(), (int)indices.size());
 #else
-    // Each ring segment is its own convex quad between the inner and
-    // outer arcs.
     for (int i = 0; i < segments; i++) {
       float a0 = (float)i / segments * 2.0f * (float)M_PI;
       float a1 = (float)(i + 1) / segments * 2.0f * (float)M_PI;
       float c0 = std::cos(a0), s0 = std::sin(a0);
       float c1 = std::cos(a1), s1 = std::sin(a1);
-      fillPolygonScanline(ren_,
-                          {{cx + rOut * c0 + tx, cy + rOut * s0 + ty},
-                           {cx + rOut * c1 + tx, cy + rOut * s1 + ty},
-                           {cx + rIn * c1 + tx, cy + rIn * s1 + ty},
-                           {cx + rIn * c0 + tx, cy + rIn * s0 + ty}},
-                          c);
+      fillPolygonScanline(ren_, {{cx + rOut * c0 + tx, cy + rOut * s0 + ty}, {cx + rOut * c1 + tx, cy + rOut * s1 + ty}, {cx + rIn * c1 + tx, cy + rIn * s1 + ty}, {cx + rIn * c0 + tx, cy + rIn * s0 + ty}}, c);
     }
 #endif
   }
@@ -358,7 +381,6 @@ void Graphics::line(float x1, float y1, float x2, float y2) {
 
 void Graphics::polygon(DrawMode mode, const std::vector<float> &xyPairs) {
   if (mode == DrawMode::Fill) {
-    // Convex fan; concave polygons would need real triangulation.
     fillTriangleFan(xyPairs);
   } else {
     size_t n = xyPairs.size() / 2;
@@ -369,44 +391,47 @@ void Graphics::polygon(DrawMode mode, const std::vector<float> &xyPairs) {
   }
 }
 
-SDL_Texture *Graphics::textTexture(const std::string &text, int &outW, int &outH) {
-  auto it = textCache_.find(text);
-  if (it == textCache_.end()) {
-    SDL_Color white{255, 255, 255, 255};
-    SDL_Surface *surf = TTF_RenderUTF8_Blended(font_, text.c_str(), white);
-    if (!surf) return nullptr;
-    auto img = std::make_unique<Image>();
-    img->tex_ = SDL_CreateTextureFromSurface(ren_, surf);
-    img->w_ = surf->w;
-    img->h_ = surf->h;
-    SDL_FreeSurface(surf);
-    if (!img->tex_) return nullptr;
-    SDL_SetTextureBlendMode(img->tex_, SDL_BLENDMODE_BLEND);
-    it = textCache_.emplace(text, std::move(img)).first;
-  }
-  outW = it->second->w_;
-  outH = it->second->h_;
-  return it->second->tex_;
-}
-
 void Graphics::print(const std::string &text, float x, float y) {
-  int w = 0, h = 0;
-  SDL_Texture *tex = textTexture(text, w, h);
-  if (!tex) return;
-  SDL_SetTextureColorMod(tex, toByte(cur_.color.r), toByte(cur_.color.g),
+  if (!font_ || !font_->data_ || !font_->data_->atlas) return;
+  Font::Data &d = *font_->data_;
+  SDL_SetTextureColorMod(d.atlas, toByte(cur_.color.r), toByte(cur_.color.g),
                          toByte(cur_.color.b));
-  SDL_SetTextureAlphaMod(tex, toByte(cur_.color.a));
-  SDL_FRect dst{x + cur_.tx, y + cur_.ty, (float)w, (float)h};
-  SDL_RenderCopyF(ren_, tex, nullptr, &dst);
+  SDL_SetTextureAlphaMod(d.atlas, toByte(cur_.color.a));
+  float penX = x + cur_.tx, penY = y + cur_.ty;
+  for (unsigned char ch : text) {
+    if (ch < Font::Data::kFirstChar || ch >= Font::Data::kFirstChar + Font::Data::kNumChars)
+      continue;
+    stbtt_aligned_quad q;
+    stbtt_GetPackedQuad(d.chars, d.atlasW, d.atlasH, ch - Font::Data::kFirstChar,
+                        &penX, &penY, &q, 0);
+    int sx = (int)std::round(q.s0 * d.atlasW);
+    int sy = (int)std::round(q.t0 * d.atlasH);
+    int sw = (int)std::round(q.s1 * d.atlasW) - sx;
+    int sh = (int)std::round(q.t1 * d.atlasH) - sy;
+    if (sw <= 0 || sh <= 0) continue;
+    SDL_Rect src{sx, sy, sw, sh};
+    SDL_FRect dst{q.x0, q.y0, q.x1 - q.x0, q.y1 - q.y0};
+    SDL_RenderCopyF(ren_, d.atlas, &src, &dst);
+  }
 }
 
 Image Graphics::newImage(const std::string &path) {
-  Image img;
-  img.tex_ = IMG_LoadTexture(ren_, path.c_str());
-  if (!img.tex_)
+  int w = 0, h = 0, n = 0;
+  unsigned char *pixels = stbi_load(path.c_str(), &w, &h, &n, 4);
+  if (!pixels)
     throw std::runtime_error("l2d: failed to load image '" + path +
-                             "': " + IMG_GetError());
-  SDL_QueryTexture(img.tex_, nullptr, nullptr, &img.w_, &img.h_);
+                             "': " + stbi_failure_reason());
+  Image img;
+  img.tex_ = SDL_CreateTexture(ren_, SDL_PIXELFORMAT_ABGR8888,
+                               SDL_TEXTUREACCESS_STATIC, w, h);
+  if (!img.tex_) {
+    stbi_image_free(pixels);
+    throw std::runtime_error(std::string("l2d: failed to create texture: ") + SDL_GetError());
+  }
+  SDL_UpdateTexture(img.tex_, nullptr, pixels, w * 4);
+  stbi_image_free(pixels);
+  img.w_ = w;
+  img.h_ = h;
   SDL_SetTextureBlendMode(img.tex_, SDL_BLENDMODE_BLEND);
 #if SDL_VERSION_ATLEAST(2, 0, 12)
   SDL_SetTextureScaleMode(img.tex_, SDL_ScaleModeLinear);
@@ -419,8 +444,7 @@ Canvas Graphics::newCanvas(int w, int h) {
   cv.tex_ = SDL_CreateTexture(ren_, SDL_PIXELFORMAT_RGBA8888,
                               SDL_TEXTUREACCESS_TARGET, w, h);
   if (!cv.tex_)
-    throw std::runtime_error(std::string("l2d: failed to create canvas: ") +
-                             SDL_GetError());
+    throw std::runtime_error(std::string("l2d: failed to create canvas: ") + SDL_GetError());
   cv.w_ = w;
   cv.h_ = h;
   SDL_SetTextureBlendMode(cv.tex_, premultipliedBlend());
@@ -433,11 +457,8 @@ Canvas Graphics::newCanvas(int w, int h) {
 void Graphics::setCanvas(Canvas &canvas) {
   activeCanvas_ = &canvas;
   SDL_SetRenderTarget(ren_, canvas.tex_);
-  // Transform and scissor state deliberately survive the target switch
-  // (LÖVE semantics); SDL's clip rect is per target, so re-apply it.
   applyScissor();
 }
-
 void Graphics::setCanvas() {
   activeCanvas_ = nullptr;
   SDL_SetRenderTarget(ren_, nullptr);
@@ -445,7 +466,6 @@ void Graphics::setCanvas() {
 }
 
 void Graphics::clear(float r, float g, float b, float a) {
-  // love.graphics.clear ignores the scissor.
   SDL_Rect prev;
   SDL_bool hadClip = SDL_RenderIsClipEnabled(ren_);
   if (hadClip) SDL_RenderGetClipRect(ren_, &prev);
@@ -465,24 +485,22 @@ void Graphics::draw(const Image &image, float x, float y, float rotation,
   if (rotation == 0) {
     SDL_RenderCopyF(ren_, image.tex_, nullptr, &dst);
   } else {
-    SDL_FPoint center{0, 0}; // LÖVE rotates around the draw origin
-    SDL_RenderCopyExF(ren_, image.tex_, nullptr, &dst,
-                      rotation * 180.0 / M_PI, &center, SDL_FLIP_NONE);
+    SDL_FPoint center{0, 0};
+    SDL_RenderCopyExF(ren_, image.tex_, nullptr, &dst, rotation * 180.0 / M_PI,
+                      &center, SDL_FLIP_NONE);
   }
 }
 
 void Graphics::draw(const Canvas &canvas, float x, float y) {
   if (!canvas.tex_) return;
-  SDL_SetTextureColorMod(canvas.tex_, toByte(cur_.color.r),
-                         toByte(cur_.color.g), toByte(cur_.color.b));
+  SDL_SetTextureColorMod(canvas.tex_, toByte(cur_.color.r), toByte(cur_.color.g),
+                         toByte(cur_.color.b));
   SDL_SetTextureAlphaMod(canvas.tex_, toByte(cur_.color.a));
   SDL_FRect dst{x + cur_.tx, y + cur_.ty, (float)canvas.w_, (float)canvas.h_};
   SDL_RenderCopyF(ren_, canvas.tex_, nullptr, &dst);
 }
 
 std::pair<float, float> Graphics::getDimensions() const {
-  // Window size, like love.graphics.getDimensions — independent of any
-  // active canvas.
   int w = 0, h = 0;
 #if SDL_VERSION_ATLEAST(2, 0, 22)
   SDL_Window *win = SDL_RenderGetWindow(ren_);
