@@ -9,6 +9,12 @@ add_executable(cpp-l2d
 
 target_link_libraries(cpp-l2d PRIVATE l2d)
 
+# CxxDroid looks for the launchable binary directly in the top-level
+# build directory (matching "#Cxxdroid-binary: cpp-l2d" in the root
+# CMakeLists.txt), not nested under app/.
+set_target_properties(cpp-l2d PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Bundle assets and the l2d default font next to the binary.
 add_custom_command(TARGET cpp-l2d POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
