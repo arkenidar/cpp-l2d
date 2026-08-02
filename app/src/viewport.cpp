@@ -40,6 +40,15 @@ bool Viewport::hitBody(float mx, float my) const {
   return mx >= x && mx <= x + w && my >= y && my <= y + h;
 }
 
+std::pair<float, float> Viewport::childrenExtent() const {
+  float maxX = 0, maxY = 0;
+  for (auto &child : children) {
+    maxX = std::max(maxX, child->viewport->x + child->viewport->w);
+    maxY = std::max(maxY, child->viewport->y + child->viewport->h);
+  }
+  return {maxX, maxY};
+}
+
 void Viewport::clampScroll() {
   float maxScrollX = std::max(0.0f, contentW - w);
   float maxScrollY = std::max(0.0f, contentH - h);
@@ -134,7 +143,8 @@ void Viewport::drawStack(Graphics &g, EntryList &entries) {
   for (auto &entry : entries) {
     entry->scene->renderToCanvas();
     auto [cw, ch] = entry->scene->contentSize();
-    entry->viewport->setContentSize(cw, ch);
+    auto [childW, childH] = entry->viewport->childrenExtent();
+    entry->viewport->setContentSize(std::max(cw, childW), std::max(ch, childH));
     Scene *scene = entry->scene.get();
     entry->viewport->draw(
         g, [scene](float, float) { scene->drawContent(); },

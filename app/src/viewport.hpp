@@ -70,6 +70,12 @@ public:
 
   void clampScroll();
 
+  // Bounding extent of all child viewports' frames, in this viewport's
+  // content-space (child x/y/w/h are already stored that way). Folded
+  // into setContentSize so a child positioned or resized past this
+  // viewport's own content counts as overflow too.
+  std::pair<float, float> childrenExtent() const;
+
   PressKind beginDrag(float px, float py);
   void dragTo(float px, float py);
   void endDrag() { dragMode = DragMode::None; }
