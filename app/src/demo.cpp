@@ -70,6 +70,9 @@ float DemoApp::tabBarHeight(float wh) const {
 }
 
 void DemoApp::layout(float ww, float wh) {
+  lastLayoutW_ = ww;
+  lastLayoutH_ = wh;
+
   // Drop any in-flight drag/click captures first: they hold
   // shared_ptr<Entry>/raw Viewport* pointers into stacks that are about
   // to be torn down and rebuilt below.
@@ -286,6 +289,11 @@ void DemoApp::touchreleased(std::int64_t id, float x, float y) {
 }
 
 void DemoApp::resize(int w, int h) {
+  // Some window managers/compositors redeliver resize events with
+  // unchanged dimensions (e.g. during continuous pointer motion near a
+  // screen edge), which would otherwise drop an in-progress resize-handle
+  // drag for no reason — layout() unconditionally clears captures.
+  if ((float)w == lastLayoutW_ && (float)h == lastLayoutH_) return;
   std::printf("Window resized to: (%d, %d)\n", w, h);
   layout((float)w, (float)h);
 }

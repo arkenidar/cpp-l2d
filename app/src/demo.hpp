@@ -65,6 +65,12 @@ private:
   // origin/resize handle sizes (doubled on phone-sized screens).
   float handleScale_ = 1.0f;
 
+  // Window size layout() last ran for. resize() skips relayout when the
+  // size hasn't actually changed, since some window managers/compositors
+  // redeliver resize events with identical dimensions mid-gesture, which
+  // would otherwise drop an in-progress drag capture for no reason.
+  float lastLayoutW_ = -1, lastLayoutH_ = -1;
+
   // One independent viewport stack per tab; only tabs_[activeTab_] is
   // drawn and receives input. Kept alive (not rebuilt) across tab
   // switches so per-tab state (button toggles, scroll position)
