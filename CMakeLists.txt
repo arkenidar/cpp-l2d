@@ -1,3 +1,5 @@
+#Cxxdroid-binary: cpp-l2d
+
 cmake_minimum_required(VERSION 3.16)
 project(cpp-l2d CXX)
 
