@@ -63,9 +63,18 @@ Viewport::PressKind Viewport::beginDrag(float px, float py) {
   if (hitOrigin(px, py)) {
     dragMode = DragMode::Move;
     kind = PressKind::Move;
+    // Snap the handle to the click point rather than preserving
+    // wherever within its hit-tolerance radius the press landed, so it
+    // stays centered under the cursor for the whole drag instead of
+    // rigidly keeping the initial grab offset.
+    x = px;
+    y = py;
   } else if (hitResize(px, py)) {
     dragMode = DragMode::Resize;
     kind = PressKind::Resize;
+    w = std::max(minW, px - x);
+    h = std::max(minH, py - y);
+    clampScroll();
   } else {
     switch (bodyInputKind(px, py)) {
     case BodyKind::Content:
