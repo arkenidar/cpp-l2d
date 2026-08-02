@@ -8,18 +8,25 @@ find_package(SDL2 REQUIRED)
 
 if(TARGET SDL2::SDL2)
   # CxxDroid's bundled FindSDL2.cmake stuffs the whole link line (several
-  # libraries plus linker flags) into IMPORTED_LOCATION, a property meant
-  # for exactly one file path, so the linker gets it all as one bogus
-  # filename. Split it back into a real primary library plus link flags.
-  get_target_property(_l2d_sdl2_loc SDL2::SDL2 IMPORTED_LOCATION)
-  if(_l2d_sdl2_loc MATCHES " ")
-    string(REPLACE ";" " " _l2d_sdl2_flat "${_l2d_sdl2_loc}")
-    separate_arguments(_l2d_sdl2_tokens UNIX_COMMAND "${_l2d_sdl2_flat}")
-    list(POP_FRONT _l2d_sdl2_tokens _l2d_sdl2_primary)
-    set_target_properties(SDL2::SDL2 PROPERTIES
-      IMPORTED_LOCATION "${_l2d_sdl2_primary}"
-      INTERFACE_LINK_LIBRARIES "${_l2d_sdl2_tokens}")
-  endif()
+  # libraries plus linker flags) into an IMPORTED_LOCATION* property,
+  # meant for exactly one file path, so the linker gets it all as one
+  # bogus filename. Split it back into a real primary library plus link
+  # flags. The bogus value may live on the plain property or on a
+  # per-config variant, depending on how the module set it.
+  foreach(_l2d_sdl2_prop IN ITEMS
+      IMPORTED_LOCATION IMPORTED_LOCATION_NOCONFIG
+      IMPORTED_LOCATION_RELEASE IMPORTED_LOCATION_DEBUG
+      IMPORTED_LOCATION_MINSIZEREL IMPORTED_LOCATION_RELWITHDEBINFO)
+    get_target_property(_l2d_sdl2_loc SDL2::SDL2 ${_l2d_sdl2_prop})
+    if(_l2d_sdl2_loc MATCHES " ")
+      string(REPLACE ";" " " _l2d_sdl2_flat "${_l2d_sdl2_loc}")
+      separate_arguments(_l2d_sdl2_tokens UNIX_COMMAND "${_l2d_sdl2_flat}")
+      list(POP_FRONT _l2d_sdl2_tokens _l2d_sdl2_primary)
+      set_target_properties(SDL2::SDL2 PROPERTIES
+        ${_l2d_sdl2_prop} "${_l2d_sdl2_primary}"
+        INTERFACE_LINK_LIBRARIES "${_l2d_sdl2_tokens}")
+    endif()
+  endforeach()
 endif()
 
 if(NOT TARGET SDL2::SDL2)
