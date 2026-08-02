@@ -31,10 +31,10 @@ using EntryList = std::vector<std::shared_ptr<Entry>>;
 
 class Viewport {
 public:
-  // Sized for comfortable touch targets (~44px, the standard mobile
-  // minimum) as well as mouse use, since both share these constants.
-  static constexpr float HANDLE_SIZE = 44;  // square origin handle side
-  static constexpr float HANDLE_RADIUS = 26; // resize circle handle radius
+  // Sized for comfortable touch targets, well above the ~44px mobile
+  // minimum, as well as mouse use, since both share these constants.
+  static constexpr float HANDLE_SIZE = 64;  // square origin handle side
+  static constexpr float HANDLE_RADIUS = 40; // resize circle handle radius
   static constexpr float CLICK_MOVE_THRESHOLD = 10; // max px still counted as a click
 
   // Single-line enums; ColumnLimit 0 would split them.
