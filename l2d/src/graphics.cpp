@@ -82,9 +82,15 @@ bool readFileBytes(const std::string &path, std::vector<unsigned char> &out) {
 struct Font::Data {
   SDL_Texture *atlas = nullptr;
   int atlasW = 0, atlasH = 0;
+  // Printable ASCII (32-126) plus the Latin-1 Supplement block
+  // (160-255), so accented letters like "Ö" (U+00D6) have a baked
+  // glyph rather than being silently skipped.
   static constexpr int kFirstChar = 32;
   static constexpr int kNumChars = 95;
+  static constexpr int kFirstChar2 = 160;
+  static constexpr int kNumChars2 = 96;
   stbtt_packedchar chars[kNumChars] = {};
+  stbtt_packedchar chars2[kNumChars2] = {};
   float pixelHeight = 0;
 };
 
@@ -112,6 +118,9 @@ bool Font::load(SDL_Renderer *ren, const std::string &path, float pixelHeight) {
   stbtt_PackSetOversampling(&spc, 2, 2);
   int ok = stbtt_PackFontRange(&spc, ttf.data(), 0, pixelHeight,
                                Data::kFirstChar, Data::kNumChars, data_->chars);
+  ok = ok && stbtt_PackFontRange(&spc, ttf.data(), 0, pixelHeight,
+                                 Data::kFirstChar2, Data::kNumChars2,
+                                 data_->chars2);
   stbtt_PackEnd(&spc);
   if (!ok) return false;
   std::vector<unsigned char> rgba(ATLAS_W * ATLAS_H * 4);
@@ -391,26 +400,77 @@ void Graphics::polygon(DrawMode mode, const std::vector<float> &xyPairs) {
   }
 }
 
-void Graphics::print(const std::string &text, float x, float y) {
+namespace {
+
+// Decodes the next UTF-8 codepoint starting at text[i], advancing i past
+// it. Malformed sequences decode as a single replacement codepoint
+// (U+FFFD, itself unmapped so it's silently skipped by print()) rather
+// than desyncing the rest of the string.
+std::uint32_t decodeUtf8(const std::string &text, size_t &i) {
+  unsigned char c0 = (unsigned char)text[i];
+  auto cont = [&](size_t idx) {
+    return idx < text.size() && ((unsigned char)text[idx] & 0xC0) == 0x80;
+  };
+  if (c0 < 0x80) {
+    i += 1;
+    return c0;
+  }
+  if ((c0 & 0xE0) == 0xC0 && cont(i + 1)) {
+    std::uint32_t cp = ((c0 & 0x1Fu) << 6) | ((unsigned char)text[i + 1] & 0x3Fu);
+    i += 2;
+    return cp;
+  }
+  if ((c0 & 0xF0) == 0xE0 && cont(i + 1) && cont(i + 2)) {
+    std::uint32_t cp = ((c0 & 0x0Fu) << 12) | (((unsigned char)text[i + 1] & 0x3Fu) << 6) |
+                       ((unsigned char)text[i + 2] & 0x3Fu);
+    i += 3;
+    return cp;
+  }
+  if ((c0 & 0xF8) == 0xF0 && cont(i + 1) && cont(i + 2) && cont(i + 3)) {
+    std::uint32_t cp = ((c0 & 0x07u) << 18) | (((unsigned char)text[i + 1] & 0x3Fu) << 12) |
+                       (((unsigned char)text[i + 2] & 0x3Fu) << 6) |
+                       ((unsigned char)text[i + 3] & 0x3Fu);
+    i += 4;
+    return cp;
+  }
+  i += 1;
+  return 0xFFFD;
+}
+
+} // namespace
+
+void Graphics::print(const std::string &text, float x, float y, float scale) {
   if (!font_ || !font_->data_ || !font_->data_->atlas) return;
   Font::Data &d = *font_->data_;
   SDL_SetTextureColorMod(d.atlas, toByte(cur_.color.r), toByte(cur_.color.g),
                          toByte(cur_.color.b));
   SDL_SetTextureAlphaMod(d.atlas, toByte(cur_.color.a));
-  float penX = x + cur_.tx, penY = y + cur_.ty;
-  for (unsigned char ch : text) {
-    if (ch < Font::Data::kFirstChar || ch >= Font::Data::kFirstChar + Font::Data::kNumChars)
+  float startX = x + cur_.tx, startY = y + cur_.ty;
+  float penX = startX / scale, penY = startY / scale;
+  for (size_t i = 0; i < text.size();) {
+    std::uint32_t cp = decodeUtf8(text, i);
+    stbtt_packedchar *chars;
+    int index;
+    if (cp >= Font::Data::kFirstChar && cp < Font::Data::kFirstChar + Font::Data::kNumChars) {
+      chars = d.chars;
+      index = (int)cp - Font::Data::kFirstChar;
+    } else if (cp >= Font::Data::kFirstChar2 &&
+               cp < Font::Data::kFirstChar2 + Font::Data::kNumChars2) {
+      chars = d.chars2;
+      index = (int)cp - Font::Data::kFirstChar2;
+    } else {
       continue;
+    }
     stbtt_aligned_quad q;
-    stbtt_GetPackedQuad(d.chars, d.atlasW, d.atlasH, ch - Font::Data::kFirstChar,
-                        &penX, &penY, &q, 0);
+    stbtt_GetPackedQuad(chars, d.atlasW, d.atlasH, index, &penX, &penY, &q, 0);
     int sx = (int)std::round(q.s0 * d.atlasW);
     int sy = (int)std::round(q.t0 * d.atlasH);
     int sw = (int)std::round(q.s1 * d.atlasW) - sx;
     int sh = (int)std::round(q.t1 * d.atlasH) - sy;
     if (sw <= 0 || sh <= 0) continue;
     SDL_Rect src{sx, sy, sw, sh};
-    SDL_FRect dst{q.x0, q.y0, q.x1 - q.x0, q.y1 - q.y0};
+    SDL_FRect dst{q.x0 * scale, q.y0 * scale, (q.x1 - q.x0) * scale,
+                  (q.y1 - q.y0) * scale};
     SDL_RenderCopyF(ren_, d.atlas, &src, &dst);
   }
 }

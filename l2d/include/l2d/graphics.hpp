@@ -125,7 +125,7 @@ public:
   void circle(DrawMode mode, float cx, float cy, float radius);
   void line(float x1, float y1, float x2, float y2);
   void polygon(DrawMode mode, const std::vector<float> &xyPairs);
-  void print(const std::string &text, float x, float y);
+  void print(const std::string &text, float x, float y, float scale = 1.0f);
 
   // --- images / canvases ---
   Image newImage(const std::string &path);

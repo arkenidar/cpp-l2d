@@ -1,5 +1,7 @@
 #include "shapes.hpp"
 
+#include <algorithm>
+
 namespace shapes {
 
 using l2d::DrawMode;
@@ -95,7 +97,7 @@ public:
   void draw(Graphics &g) override {
     float x = o_.x, y = o_.y, s = o_.scale;
     g.setColor(1, 1, 1);
-    g.print("Hello, L\xC3\x96VE!", x, y);
+    g.print("Hello, L\xC3\x96VE!", x, y, std::max(s, 1.0f));
     g.setColor(0, 1, 0);
     g.line(x + 350 * s, y - 100 * s, x + 450 * s, y);
     g.setColor(1, 1, 0);
