@@ -224,7 +224,9 @@ void DemoApp::draw(Graphics &g) {
 }
 
 void DemoApp::keypressed(const std::string &key) {
-  if (key == "escape") engine_->quitEvent();
+  // "ac back" is the Android back button/gesture (SDL_GetKeyName of
+  // SDLK_AC_BACK), the touch-native equivalent of desktop's Escape.
+  if (key == "escape" || key == "ac back") engine_->quitEvent();
 }
 
 void DemoApp::mousepressed(float x, float y, int button) {
