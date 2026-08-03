@@ -228,11 +228,17 @@ bool Engine::isShiftDown() const {
 }
 
 std::string Engine::basePath() {
+#ifdef L2D_ANDROID_APK
+  // Asset-relative paths must have no "./" prefix: AAssetManager_open()
+  // takes them literally rather than normalizing like a POSIX path.
+  return "";
+#else
   char *p = SDL_GetBasePath();
   if (!p) return "./";
   std::string s(p);
   SDL_free(p);
   return s;
+#endif
 }
 
 } // namespace l2d

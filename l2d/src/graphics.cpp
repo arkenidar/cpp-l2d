@@ -482,8 +482,15 @@ void Graphics::print(const std::string &text, float x, float y, float scale) {
 }
 
 Image Graphics::newImage(const std::string &path) {
+  // stbi_load() opens the path with fopen(), which can't reach files
+  // bundled in the APK; go through SDL_RWFromFile (readFileBytes) like
+  // Font::load() does, so this works under an Android APK build too.
+  std::vector<unsigned char> bytes;
+  if (!readFileBytes(path, bytes))
+    throw std::runtime_error("l2d: failed to load image '" + path + "': can't open");
   int w = 0, h = 0, n = 0;
-  unsigned char *pixels = stbi_load(path.c_str(), &w, &h, &n, 4);
+  unsigned char *pixels = stbi_load_from_memory(bytes.data(), (int)bytes.size(),
+                                                &w, &h, &n, 4);
   if (!pixels)
     throw std::runtime_error("l2d: failed to load image '" + path +
                              "': " + stbi_failure_reason());

@@ -4,6 +4,7 @@
 #ifdef L2D_ANDROID_APK
 // SDL_main.h is mandatory in the file that defines main() on Android: it
 // remaps main to SDL_main, which SDL's JNI glue (SDLActivity) calls.
+#include <SDL.h>
 #include <SDL_main.h>
 #endif
 
@@ -11,7 +12,11 @@
 
 #include "demo.hpp"
 
+#ifdef L2D_ANDROID_APK
+extern "C" int main(int, char **) {
+#else
 int main() {
+#endif
   try {
     l2d::Config config;
     config.title = "cpp-l2d";
@@ -20,6 +25,10 @@ int main() {
     return engine.run(app);
   } catch (const std::exception &e) {
     std::fprintf(stderr, "An error occurred: %s\n", e.what());
+#ifdef L2D_ANDROID_APK
+    // stderr isn't captured by logcat on Android; SDL_Log is.
+    SDL_Log("An error occurred: %s", e.what());
+#endif
     return 1;
   }
 }
