@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <fstream>
 #include <stdexcept>
 #include <vector>
 
@@ -65,14 +64,21 @@ void fillPolygonScanline(SDL_Renderer *ren, const std::vector<SDL_FPoint> &pts,
 }
 #endif
 
+// SDL_RWFromFile rather than std::ifstream: under an Android APK build,
+// SDL's Android backend transparently redirects this to AssetManager so
+// bundled assets load from the APK, which plain C++ file I/O cannot reach.
 bool readFileBytes(const std::string &path, std::vector<unsigned char> &out) {
-  std::ifstream f(path, std::ios::binary | std::ios::ate);
-  if (!f) return false;
-  std::streamsize size = f.tellg();
-  if (size <= 0) return false;
-  f.seekg(0, std::ios::beg);
+  SDL_RWops *rw = SDL_RWFromFile(path.c_str(), "rb");
+  if (!rw) return false;
+  Sint64 size = SDL_RWsize(rw);
+  if (size <= 0) {
+    SDL_RWclose(rw);
+    return false;
+  }
   out.resize((size_t)size);
-  return f.read((char *)out.data(), size).good();
+  bool ok = SDL_RWread(rw, out.data(), 1, (size_t)size) == (size_t)size;
+  SDL_RWclose(rw);
+  return ok;
 }
 
 } // namespace

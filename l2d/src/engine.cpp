@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <stdexcept>
 
 namespace l2d {
@@ -30,6 +31,16 @@ std::string findDefaultFont() {
     }
   }
   return "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
+}
+
+// Detects Termux (with or without the X11 add-on), which reports as a
+// normal Linux desktop to SDL but needs the borderless-window sizing
+// below rather than SDL_WINDOW_FULLSCREEN_DESKTOP.
+bool runningInTermux() {
+  const char *v = SDL_getenv("TERMUX_VERSION");
+  if (v && v[0]) return true;
+  const char *p = SDL_getenv("PREFIX");
+  return p && std::strstr(p, "com.termux") != nullptr;
 }
 
 } // namespace
@@ -62,6 +73,43 @@ Engine::Engine(const Config &config) : config_(config) {
                              config_.height, flags);
   if (!window_)
     throw std::runtime_error(std::string("l2d: SDL_CreateWindow failed: ") + SDL_GetError());
+
+#ifdef L2D_ANDROID_APK
+  // On a real Android APK (SDL activity + JNI glue, defined by
+  // android/app/jni/CMakeLists.txt), the OS status/navigation bars are
+  // drawn on top of the window. Fullscreen puts the activity into
+  // immersive sticky mode, which hides both so the whole screen is
+  // drawable. Gated on this macro rather than __ANDROID__: Termux's and
+  // CxxDroid's clang also target bionic and define that, yet their builds
+  // are ordinary executables with no Android JNI bridge, where this call
+  // either does nothing useful or (Termux:X11) renders black.
+  if (SDL_SetWindowFullscreen(window_, SDL_WINDOW_FULLSCREEN_DESKTOP) != 0)
+    SDL_Log("l2d: SDL_SetWindowFullscreen failed: %s", SDL_GetError());
+#endif
+
+  // Under Termux:X11, SDL_WINDOW_FULLSCREEN_DESKTOP renders black (the
+  // window is focused and takes input, but nothing is drawn), so fill the
+  // screen with a borderless window instead, which stays on the normal
+  // windowed render path. Sized to the display's usable bounds rather than
+  // the full desktop mode so the window starts below the Android status
+  // bar, which Termux:X11 draws (semi-transparently) on top of anything
+  // placed under it.
+  if (runningInTermux()) {
+    SDL_Rect ub;
+    if (SDL_GetDisplayUsableBounds(0, &ub) == 0) {
+      SDL_SetWindowBordered(window_, SDL_FALSE);
+      SDL_SetWindowPosition(window_, ub.x, ub.y);
+      SDL_SetWindowSize(window_, ub.w, ub.h);
+      config_.width = ub.w;
+      config_.height = ub.h;
+    } else if (SDL_DisplayMode mode; SDL_GetDesktopDisplayMode(0, &mode) == 0) {
+      SDL_SetWindowBordered(window_, SDL_FALSE);
+      SDL_SetWindowPosition(window_, 0, 0);
+      SDL_SetWindowSize(window_, mode.w, mode.h);
+      config_.width = mode.w;
+      config_.height = mode.h;
+    }
+  }
 
   renderer_ = SDL_CreateRenderer(window_, -1,
                                  SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);

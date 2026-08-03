@@ -1,0 +1,54 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace "org.arkenidar.cppl2d"
+    compileSdkVersion 34
+    defaultConfig {
+        applicationId "org.arkenidar.cppl2d"
+        minSdkVersion 21          // NDK r30 floor; SDL 2.30.x itself needs only 19
+        targetSdkVersion 34
+        versionCode 1
+        versionName "1.0"
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_static"
+            }
+        }
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'   // x86_64 for the emulator
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+    externalNativeBuild {
+        cmake {
+            path 'jni/CMakeLists.txt'
+        }
+    }
+    lint {
+        abortOnError false
+    }
+
+    // Engine::basePath() prefixes bundled-asset paths with the executable's
+    // directory on desktop but is a no-op passthrough under APP_ANDROID_APK
+    // (see engine.cpp), so paths like "assets/..." and "resources/Vera.ttf"
+    // resolve via SDL's AssetManager-backed SDL_RWFromFile straight from the
+    // APK asset root — no extra nesting needed, unlike the maze game's flat
+    // asset layout. Staged via copy tasks to avoid duplicating files in git.
+    sourceSets.main.assets.srcDirs += "$buildDir/staged-assets"
+}
+
+tasks.register('stageAppAssets', Copy) {
+    from "${rootDir}/../app/assets"
+    into "$buildDir/staged-assets/assets"
+}
+tasks.register('stageL2dResources', Copy) {
+    from "${rootDir}/../l2d/resources"
+    into "$buildDir/staged-assets/resources"
+}
+preBuild.dependsOn 'stageAppAssets'
+preBuild.dependsOn 'stageL2dResources'

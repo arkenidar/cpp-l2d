@@ -8,7 +8,14 @@
 # bundled FindSDL2.cmake) define the variables correctly but produce a
 # broken imported target (e.g. stuffing the whole link line into
 # IMPORTED_LOCATION), so this is the form that works everywhere.
-find_package(SDL2 REQUIRED)
+#
+# Skipped when the Android APK build (android/app/jni/CMakeLists.txt) has
+# already brought in SDL2 as a target via add_subdirectory(SDL): there is
+# no system SDL2 package to find under the NDK toolchain, and linking
+# against the SDL2 target directly works fine there.
+if(NOT TARGET SDL2)
+  find_package(SDL2 REQUIRED)
+endif()
 
 add_library(l2d STATIC
   src/graphics.cpp
@@ -17,10 +24,15 @@ add_library(l2d STATIC
 )
 
 target_include_directories(l2d
-  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include ${SDL2_INCLUDE_DIRS}
+  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/stb
 )
-target_link_libraries(l2d PUBLIC ${SDL2_LIBRARIES})
+if(TARGET SDL2)
+  target_link_libraries(l2d PUBLIC SDL2)
+else()
+  target_include_directories(l2d PUBLIC ${SDL2_INCLUDE_DIRS})
+  target_link_libraries(l2d PUBLIC ${SDL2_LIBRARIES})
+endif()
 
 # The library's default font (Vera Sans 13px, same as LÖVE embeds) must
 # sit in resources/ next to any executable that links l2d.

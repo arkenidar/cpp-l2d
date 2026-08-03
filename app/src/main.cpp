@@ -1,6 +1,12 @@
 #include <cstdio>
 #include <exception>
 
+#ifdef L2D_ANDROID_APK
+// SDL_main.h is mandatory in the file that defines main() on Android: it
+// remaps main to SDL_main, which SDL's JNI glue (SDLActivity) calls.
+#include <SDL_main.h>
+#endif
+
 #include <l2d/engine.hpp>
 
 #include "demo.hpp"
