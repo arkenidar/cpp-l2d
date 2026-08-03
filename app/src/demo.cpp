@@ -177,9 +177,12 @@ void DemoApp::layout(float ww, float wh) {
   addViewport(tabs_[2], 0, tbh, sw, sh, std::move(overlayObjects), false);
 }
 
+float DemoApp::exitButtonWidth(float wh) const { return tabBarHeight(wh); }
+
 void DemoApp::drawTabBar(Graphics &g, float ww, float wh) {
   float tbh = tabBarHeight(wh);
-  float tabW = ww / kTabCount;
+  float exitW = exitButtonWidth(wh);
+  float tabW = (ww - exitW) / kTabCount;
   // Scale text well above the baked 13px atlas size for legibility on a
   // phone screen; ~40% of the bar height reads clearly without
   // crowding it.
@@ -199,12 +202,31 @@ void DemoApp::drawTabBar(Graphics &g, float ww, float wh) {
     float baselineY = tbh * 0.5f + kBaseFontSize * textScale * 0.35f;
     g.print(kTabLabels[i], x + (tabW - textW) * 0.5f, baselineY, textScale);
   }
+
+  // Exit button: a visible on-screen control, since Android gesture nav
+  // eats edge-swipes into the app's own pan/scroll handling before they
+  // ever reach the OS as a back gesture, and gesture-nav devices show no
+  // on-screen back button at all.
+  float exitX = ww - exitW;
+  g.setColor(0.45f, 0.15f, 0.15f);
+  g.rectangle(l2d::DrawMode::Fill, exitX, 0, exitW, tbh);
+  g.setColor(1, 1, 1);
+  g.setLineWidth(1);
+  g.rectangle(l2d::DrawMode::Line, exitX, 0, exitW, tbh);
+  float textW = (float)std::strlen("X") * kBaseFontSize * 0.55f * textScale;
+  float baselineY = tbh * 0.5f + kBaseFontSize * textScale * 0.35f;
+  g.print("X", exitX + (exitW - textW) * 0.5f, baselineY, textScale);
 }
 
 bool DemoApp::handleTabBarPress(float x, float y, float ww, float wh) {
   float tbh = tabBarHeight(wh);
   if (y >= tbh) return false;
-  int tab = std::clamp((int)(x / (ww / kTabCount)), 0, kTabCount - 1);
+  float exitW = exitButtonWidth(wh);
+  if (x >= ww - exitW) {
+    engine_->quitEvent();
+    return true;
+  }
+  int tab = std::clamp((int)(x / ((ww - exitW) / kTabCount)), 0, kTabCount - 1);
   if (tab != activeTab_) {
     mouseCapture_.reset();
     touchCaptures_.clear();

@@ -50,6 +50,9 @@ private:
   // Height of the tab bar strip, given the current window height.
   float tabBarHeight(float wh) const;
 
+  // Width of the on-screen exit button at the right end of the tab bar.
+  float exitButtonWidth(float wh) const;
+
   // Draws the tab bar into the top strip of the window.
   void drawTabBar(l2d::Graphics &g, float ww, float wh);
 
